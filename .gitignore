@@ -1,0 +1,28 @@
+# Databases
+*.db
+*.db-shm
+*.db-wal
+
+# Node
+node_modules/
+
+# Build artifacts
+ui/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
+
+# Project planning (not source code)
+claude-code-prompt.md
+project-phases.md
+sentinel.md
