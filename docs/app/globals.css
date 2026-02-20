@@ -1,0 +1,216 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-sentinel-50: oklch(0.96 0.02 195);
+  --color-sentinel-100: oklch(0.90 0.05 195);
+  --color-sentinel-200: oklch(0.82 0.08 195);
+  --color-sentinel-300: oklch(0.74 0.12 195);
+  --color-sentinel-400: oklch(0.68 0.15 195);
+  --color-sentinel-500: oklch(0.60 0.14 200);
+  --color-sentinel-600: oklch(0.52 0.12 205);
+  --color-sentinel-700: oklch(0.44 0.10 210);
+  --color-sentinel-800: oklch(0.38 0.08 210);
+  --color-sentinel-900: oklch(0.32 0.06 210);
+  --color-sentinel-950: oklch(0.22 0.05 215);
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-white);
+  color: var(--color-gray-900);
+}
+
+.dark body {
+  background-color: var(--color-gray-950);
+  color: var(--color-gray-100);
+}
+
+::selection {
+  background-color: oklch(0.68 0.15 195 / 0.3);
+}
+
+/* Prose-style docs content */
+.prose-docs {
+  line-height: 1.75;
+}
+
+.prose-docs h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin-bottom: 1rem;
+  margin-top: 2rem;
+}
+
+.prose-docs h1:first-child {
+  margin-top: 0;
+}
+
+.prose-docs h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.dark .prose-docs h2 {
+  border-bottom-color: var(--color-gray-800);
+}
+
+.prose-docs h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose-docs p {
+  margin-bottom: 1rem;
+  color: var(--color-gray-700);
+}
+
+.dark .prose-docs p {
+  color: var(--color-gray-300);
+}
+
+.prose-docs ul {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+  list-style-type: disc;
+}
+
+.prose-docs ul li + li {
+  margin-top: 0.25rem;
+}
+
+.prose-docs ol {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+  list-style-type: decimal;
+}
+
+.prose-docs li {
+  color: var(--color-gray-700);
+}
+
+.dark .prose-docs li {
+  color: var(--color-gray-300);
+}
+
+.prose-docs a {
+  color: var(--color-sentinel-500);
+  text-decoration: underline;
+  text-decoration-color: oklch(0.68 0.15 195 / 0.3);
+  transition: text-decoration-color 0.15s;
+}
+
+.dark .prose-docs a {
+  color: var(--color-sentinel-400);
+}
+
+.prose-docs a:hover {
+  text-decoration-color: var(--color-sentinel-400);
+}
+
+.prose-docs strong {
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.dark .prose-docs strong {
+  color: var(--color-white);
+}
+
+.prose-docs code:not(pre code) {
+  font-size: 0.875rem;
+  font-family: var(--font-mono);
+  background-color: var(--color-gray-100);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  color: var(--color-sentinel-700);
+}
+
+.dark .prose-docs code:not(pre code) {
+  background-color: var(--color-gray-800);
+  color: var(--color-sentinel-300);
+}
+
+.prose-docs table {
+  width: 100%;
+  font-size: 0.875rem;
+  margin-bottom: 1.5rem;
+  border-collapse: collapse;
+}
+
+.prose-docs th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.75rem;
+  background-color: var(--color-gray-50);
+  border: 1px solid var(--color-gray-200);
+}
+
+.dark .prose-docs th {
+  background-color: var(--color-gray-900);
+  border-color: var(--color-gray-800);
+}
+
+.prose-docs td {
+  padding: 0.75rem;
+  border: 1px solid var(--color-gray-200);
+}
+
+.dark .prose-docs td {
+  border-color: var(--color-gray-800);
+}
+
+.prose-docs blockquote {
+  border-left: 4px solid var(--color-sentinel-400);
+  padding-left: 1rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  border-radius: 0 0.25rem 0.25rem 0;
+}
+
+.prose-docs hr {
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+  border-color: var(--color-gray-200);
+}
+
+.dark .prose-docs hr {
+  border-color: var(--color-gray-800);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-gray-300);
+  border-radius: 9999px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--color-gray-700);
+}

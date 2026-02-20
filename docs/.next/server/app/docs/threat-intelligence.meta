@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/docs/layout,_N_T_/docs/threat-intelligence/layout,_N_T_/docs/threat-intelligence/page,_N_T_/docs/threat-intelligence"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/docs/threat-intelligence/__PAGE__",
+    "/docs/threat-intelligence",
+    "/docs",
+    "/_index",
+    "/_head"
+  ]
+}

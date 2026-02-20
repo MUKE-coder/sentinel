@@ -1,0 +1,164 @@
+{
+  "version": 3,
+  "pages404": true,
+  "appType": "app",
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "priority": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_global-error",
+      "regex": "^/_global\\-error(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_global\\-error(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/docs",
+      "regex": "^/docs(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs(?:/)?$"
+    },
+    {
+      "page": "/docs/ai-analysis",
+      "regex": "^/docs/ai\\-analysis(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/ai\\-analysis(?:/)?$"
+    },
+    {
+      "page": "/docs/alerting",
+      "regex": "^/docs/alerting(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/alerting(?:/)?$"
+    },
+    {
+      "page": "/docs/anomaly-detection",
+      "regex": "^/docs/anomaly\\-detection(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/anomaly\\-detection(?:/)?$"
+    },
+    {
+      "page": "/docs/api-reference",
+      "regex": "^/docs/api\\-reference(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/api\\-reference(?:/)?$"
+    },
+    {
+      "page": "/docs/audit-logging",
+      "regex": "^/docs/audit\\-logging(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/audit\\-logging(?:/)?$"
+    },
+    {
+      "page": "/docs/auth-shield",
+      "regex": "^/docs/auth\\-shield(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/auth\\-shield(?:/)?$"
+    },
+    {
+      "page": "/docs/compliance-reports",
+      "regex": "^/docs/compliance\\-reports(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/compliance\\-reports(?:/)?$"
+    },
+    {
+      "page": "/docs/configuration",
+      "regex": "^/docs/configuration(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/configuration(?:/)?$"
+    },
+    {
+      "page": "/docs/getting-started",
+      "regex": "^/docs/getting\\-started(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/getting\\-started(?:/)?$"
+    },
+    {
+      "page": "/docs/performance",
+      "regex": "^/docs/performance(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/performance(?:/)?$"
+    },
+    {
+      "page": "/docs/rate-limiting",
+      "regex": "^/docs/rate\\-limiting(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/rate\\-limiting(?:/)?$"
+    },
+    {
+      "page": "/docs/security-headers",
+      "regex": "^/docs/security\\-headers(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/security\\-headers(?:/)?$"
+    },
+    {
+      "page": "/docs/security-score",
+      "regex": "^/docs/security\\-score(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/security\\-score(?:/)?$"
+    },
+    {
+      "page": "/docs/the-dashboard",
+      "regex": "^/docs/the\\-dashboard(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/the\\-dashboard(?:/)?$"
+    },
+    {
+      "page": "/docs/threat-intelligence",
+      "regex": "^/docs/threat\\-intelligence(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/threat\\-intelligence(?:/)?$"
+    },
+    {
+      "page": "/docs/waf",
+      "regex": "^/docs/waf(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/docs/waf(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments",
+    "clientParamParsing": false,
+    "dynamicRSCPrerender": false
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/docs/layout,_N_T_/docs/anomaly-detection/layout,_N_T_/docs/anomaly-detection/page,_N_T_/docs/anomaly-detection"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/docs/anomaly-detection/__PAGE__",
+    "/docs/anomaly-detection",
+    "/docs",
+    "/_index",
+    "/_head"
+  ]
+}

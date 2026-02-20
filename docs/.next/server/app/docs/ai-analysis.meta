@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/docs/layout,_N_T_/docs/ai-analysis/layout,_N_T_/docs/ai-analysis/page,_N_T_/docs/ai-analysis"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/docs/ai-analysis/__PAGE__",
+    "/docs/ai-analysis",
+    "/docs",
+    "/_index",
+    "/_head"
+  ]
+}

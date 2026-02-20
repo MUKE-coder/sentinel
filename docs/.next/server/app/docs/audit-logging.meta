@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/docs/layout,_N_T_/docs/audit-logging/layout,_N_T_/docs/audit-logging/page,_N_T_/docs/audit-logging"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/docs/audit-logging/__PAGE__",
+    "/docs/audit-logging",
+    "/docs",
+    "/_index",
+    "/_head"
+  ]
+}

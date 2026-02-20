@@ -6,8 +6,7 @@
 # Node
 node_modules/
 
-# Build artifacts
-ui/dist/
+# Build artifacts (ui/dist/ is committed for go:embed)
 
 # IDE
 .idea/
