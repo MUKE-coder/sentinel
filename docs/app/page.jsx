@@ -2,7 +2,7 @@ import Link from 'next/link';
 import {
   Shield, Zap, Activity, Brain, FileText, Bell,
   Lock, Eye, BarChart3, Terminal, ArrowRight, ChevronRight,
-  Globe, Gauge, Database, GitBranch
+  Globe, Gauge, Database, GitBranch, Youtube, Linkedin, Heart, ExternalLink
 } from 'lucide-react';
 
 const features = [
@@ -234,12 +234,57 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-gray-200 dark:border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex items-center justify-between text-sm text-gray-500">
-          <div className="flex items-center gap-2">
-            <Shield size={14} className="text-sentinel-500" />
-            <span>Sentinel</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-2">
+              <Shield size={14} className="text-sentinel-500" />
+              <span className="text-sm text-gray-500">Sentinel</span>
+              <span className="text-gray-300 dark:text-gray-700">|</span>
+              <span className="text-sm text-gray-500">MIT License</span>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <a
+                href="https://www.youtube.com/@JBWEBDEVELOPER"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                aria-label="YouTube"
+              >
+                <Youtube size={18} className="text-gray-500 hover:text-red-500 transition-colors" />
+              </a>
+              <a
+                href="https://www.linkedin.com/in/muke-johnbaptist-95bb82198/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                aria-label="LinkedIn"
+              >
+                <Linkedin size={18} className="text-gray-500 hover:text-blue-600 transition-colors" />
+              </a>
+              <a
+                href="https://jb.desishub.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group"
+                aria-label="Portfolio"
+              >
+                <ExternalLink size={18} className="text-gray-500 group-hover:text-sentinel-500 transition-colors" />
+              </a>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-sm text-gray-500">
+              Built with <Heart size={14} className="text-red-500 fill-red-500" /> by{' '}
+              <a
+                href="https://jb.desishub.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-gray-700 dark:text-gray-300 hover:text-sentinel-500 dark:hover:text-sentinel-400 transition-colors"
+              >
+                JB
+              </a>
+            </div>
           </div>
-          <span>MIT License</span>
         </div>
       </footer>
     </div>
