@@ -1,11 +1,54 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'API Reference - Sentinel Docs' };
+export const metadata = {
+  title: 'API Reference - Sentinel Docs',
+  description:
+    'Complete REST API reference for Sentinel with 40+ endpoints covering threats, actors, WAF, rate limits, AI, reports, and WebSocket streams.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/api-reference',
+  },
+  openGraph: {
+    title: 'API Reference - Sentinel Docs',
+    description:
+      'Complete REST API reference for Sentinel with 40+ endpoints covering threats, actors, WAF, rate limits, AI, reports, and WebSocket streams.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/api-reference',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function ApiReference() {
   return (
     <>
+      <FAQSchema
+        faqs={[
+          {
+            question: 'How do I authenticate with the Sentinel API?',
+            answer: 'Call POST /sentinel/api/auth/login with your dashboard username and password as JSON. The response contains a JWT token. Include it in subsequent requests as an Authorization: Bearer <token> header. The login endpoint is the only one that does not require authentication.',
+          },
+          {
+            question: 'What is the base URL for the Sentinel API?',
+            answer: 'All API paths are relative to your configured prefix, which defaults to /sentinel. For example, the threats endpoint is accessed at /sentinel/api/threats. If you set a custom prefix like /admin/security, the full path becomes /admin/security/api/threats.',
+          },
+          {
+            question: 'How is pagination handled in the Sentinel API?',
+            answer: 'All list endpoints return data in a standard paginated envelope with a data array and a meta object containing total count, current page, and page_size. Use the page and page_size query parameters to navigate results. Default page size is 20.',
+          },
+          {
+            question: 'Does Sentinel have WebSocket endpoints for real-time data?',
+            answer: 'Yes. Sentinel exposes two WebSocket endpoints: /ws/threats for live threat event streaming and /ws/metrics for real-time performance metrics. Authenticate via a token query parameter instead of the Authorization header since browser WebSocket APIs do not support custom headers.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="API Reference - Sentinel Docs"
+        description="Complete REST API reference for Sentinel with 40+ endpoints covering threats, actors, WAF, rate limits, AI, reports, and WebSocket streams."
+        url="https://sentinel-go-sdk.vercel.app/docs/api-reference"
+      />
+      <SpeakableSchema url="https://sentinel-go-sdk.vercel.app/docs/api-reference" />
+
       <h1>API Reference</h1>
       <p>
         This is the comprehensive reference for every HTTP and WebSocket endpoint exposed by

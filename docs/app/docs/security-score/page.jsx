@@ -1,11 +1,57 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Security Score - Sentinel Docs' };
+export const metadata = {
+  title: 'Security Score - Sentinel Docs',
+  description:
+    'Monitor your application\'s security posture with Sentinel\'s weighted scoring engine across 5 dimensions with actionable recommendations.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/security-score',
+  },
+  openGraph: {
+    title: 'Security Score - Sentinel Docs',
+    description:
+      'Monitor your application\'s security posture with Sentinel\'s weighted scoring engine across 5 dimensions with actionable recommendations.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/security-score',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function SecurityScore() {
   return (
     <>
+      <FAQSchema
+        questions={[
+          {
+            q: 'What dimensions are scored in Sentinel\'s security score?',
+            a: 'The score aggregates five weighted dimensions: Threat Activity (30%), Auth Security (20%), Response Posture (20%), Header Compliance (15%), and Rate Limiting (15%). Each dimension evaluates a different aspect of your security configuration and runtime behavior.',
+          },
+          {
+            q: 'How often is the Sentinel security score recomputed?',
+            a: 'The score engine computes the score once immediately on startup, then recomputes it every 5 minutes via a background goroutine. The API endpoint also triggers a fresh computation on each request so you always receive the latest result.',
+          },
+          {
+            q: 'What is a good security score in Sentinel?',
+            a: 'Scores are graded A through F. A score of 90-100 (grade A) means excellent posture with all major features enabled. Grade B (80-89) is good with minor improvements available. Below 60 is grade F, indicating critical features are disabled or defaults unchanged.',
+          },
+          {
+            q: 'How can I improve my Sentinel security score?',
+            a: 'Enable WAF in block mode, configure rate limiting with per-IP and per-user limits, set all five security headers including CSP and HSTS, change the default dashboard password and secret key, and enable Auth Shield brute-force protection. Each covers a scored dimension.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Security Score - Sentinel Docs"
+        description="Monitor your application's security posture with Sentinel's weighted scoring engine across 5 dimensions with actionable recommendations."
+        url="https://sentinel-go-sdk.vercel.app/docs/security-score"
+      />
+      <SpeakableSchema
+        url="https://sentinel-go-sdk.vercel.app/docs/security-score"
+        cssSelector={['h1', 'h2', '.callout']}
+      />
+
       <h1>Security Score</h1>
       <p>
         The Security Score is a weighted composite metric (0-100) that measures your application's

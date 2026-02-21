@@ -1,11 +1,57 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Threat Intelligence - Sentinel Docs' };
+export const metadata = {
+  title: 'Threat Intelligence - Sentinel Docs',
+  description:
+    'Automatic threat actor profiling, risk scoring, IP reputation checking, and geolocation in Sentinel for Go applications.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/threat-intelligence',
+  },
+  openGraph: {
+    title: 'Threat Intelligence - Sentinel Docs',
+    description:
+      'Automatic threat actor profiling, risk scoring, IP reputation checking, and geolocation in Sentinel for Go applications.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/threat-intelligence',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function ThreatIntelligence() {
   return (
     <>
+      <FAQSchema
+        questions={[
+          {
+            q: 'What is threat actor profiling in Sentinel?',
+            a: 'Sentinel automatically creates a persistent profile for every IP that triggers a security event. Each profile tracks first/last seen timestamps, attack types, targeted routes, risk score, geographic origin, and ISP. Profiles are updated incrementally with each new event.',
+          },
+          {
+            q: 'How is the risk score calculated for threat actors?',
+            a: 'The risk score ranges from 0 to 100 and is computed from four factors: attack variety (+10 per unique type, max 50), known bad actor flag from AbuseIPDB (+20), recency of last attack within one hour (+10), and high event volume over 100 threats (+20).',
+          },
+          {
+            q: 'How does IP reputation checking work in Sentinel?',
+            a: 'When enabled, Sentinel queries the AbuseIPDB API for each attacker IP, retrieves an abuse confidence score, and caches results for 24 hours. You provide your AbuseIPDB API key and set a minimum abuse score threshold for automatic blocking.',
+          },
+          {
+            q: 'Can Sentinel automatically block threat actors?',
+            a: 'Yes. Enable AutoBlock in the IPReputationConfig and set a MinAbuseScore threshold (default 80). IPs whose AbuseIPDB confidence score meets or exceeds the threshold are automatically added to the blocklist and rejected by the middleware.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Threat Intelligence - Sentinel Docs"
+        description="Automatic threat actor profiling, risk scoring, IP reputation checking, and geolocation in Sentinel for Go applications."
+        url="https://sentinel-go-sdk.vercel.app/docs/threat-intelligence"
+      />
+      <SpeakableSchema
+        url="https://sentinel-go-sdk.vercel.app/docs/threat-intelligence"
+        cssSelector={['h1', 'h2', '.callout']}
+      />
+
       <h1>Threat Intelligence</h1>
       <p>
         Sentinel automatically profiles every IP address that triggers a security event. The Threat

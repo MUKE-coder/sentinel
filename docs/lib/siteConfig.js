@@ -1,0 +1,35 @@
+export const siteConfig = {
+  name: 'Sentinel',
+  title: 'Sentinel - Production-Grade Security Intelligence SDK for Go',
+  url: 'https://sentinel-go-sdk.vercel.app',
+  description:
+    'Drop-in security middleware for Go/Gin applications. WAF protection, rate limiting, threat detection, AI-powered analysis, anomaly detection, compliance reports, and an embedded React dashboard — all mountable with a single function call.',
+  keywords: [
+    'Go security SDK',
+    'Gin middleware',
+    'WAF Go',
+    'rate limiting Go',
+    'threat detection Go',
+    'security dashboard',
+    'Go web application firewall',
+    'sentinel security',
+    'Go security middleware',
+    'anomaly detection',
+    'AI threat analysis',
+    'GDPR compliance Go',
+    'audit logging Go',
+    'brute force protection',
+    'Go security intelligence',
+  ],
+  ogImage: 'https://sentinel-go-sdk.vercel.app/og-image.png',
+  author: {
+    name: 'JB (Muke JohnBaptist)',
+    url: 'https://jb.desishub.com/',
+  },
+  links: {
+    github: 'https://github.com/MUKE-coder/sentinel',
+    youtube: 'https://www.youtube.com/@JBWEBDEVELOPER',
+    linkedin: 'https://www.linkedin.com/in/muke-johnbaptist-95bb82198/',
+    portfolio: 'https://jb.desishub.com/',
+  },
+};

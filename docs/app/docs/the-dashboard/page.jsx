@@ -1,11 +1,57 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Dashboard - Sentinel Docs' };
+export const metadata = {
+  title: 'Dashboard - Sentinel Docs',
+  description:
+    'Explore Sentinel\'s embedded React dashboard with 13 pages for security monitoring, threat analysis, WAF management, and real-time WebSocket updates.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/the-dashboard',
+  },
+  openGraph: {
+    title: 'Dashboard - Sentinel Docs',
+    description:
+      'Explore Sentinel\'s embedded React dashboard with 13 pages for security monitoring, threat analysis, WAF management, and real-time WebSocket updates.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/the-dashboard',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function TheDashboard() {
   return (
     <>
+      <FAQSchema
+        questions={[
+          {
+            q: 'How do I access the Sentinel dashboard?',
+            a: 'The dashboard is enabled by default when you call sentinel.Mount(). Navigate to http://localhost:8080/sentinel/ui in your browser. You can customize the URL prefix via DashboardConfig.Prefix or disable the dashboard entirely by setting Enabled to false.',
+          },
+          {
+            q: 'What are the default Sentinel dashboard credentials?',
+            a: 'The default username is "admin" and the default password is "sentinel". You should always change these in production by setting Username, Password, and SecretKey in your DashboardConfig. The SecretKey is used to sign JWT tokens for session authentication.',
+          },
+          {
+            q: 'How many pages does the Sentinel dashboard have?',
+            a: 'The dashboard contains 13 pages: Dashboard overview, Threats, Actors, IP Management, WAF, Rate Limits, Analytics, AI Insights, Reports, Alerts, Audit Log, Performance, and Users. All pages are accessible from the sidebar navigation after logging in.',
+          },
+          {
+            q: 'Does the Sentinel dashboard support real-time updates?',
+            a: 'Yes. The dashboard uses two WebSocket endpoints for real-time data: /sentinel/ws/threats streams live threat events as they are detected, and /sentinel/ws/metrics streams performance metrics. Connections auto-reconnect with a 5-second backoff if disconnected.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Dashboard - Sentinel Docs"
+        description="Explore Sentinel's embedded React dashboard with 13 pages for security monitoring, threat analysis, WAF management, and real-time WebSocket updates."
+        url="https://sentinel-go-sdk.vercel.app/docs/the-dashboard"
+      />
+      <SpeakableSchema
+        url="https://sentinel-go-sdk.vercel.app/docs/the-dashboard"
+        cssSelector={['h1', 'h2', '.callout']}
+      />
+
       <h1>The Dashboard</h1>
       <p>
         Sentinel ships with a fully embedded React security dashboard that gives you real-time

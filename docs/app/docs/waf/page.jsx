@@ -1,11 +1,55 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'WAF - Sentinel Docs' };
+export const metadata = {
+  title: 'Web Application Firewall (WAF) - Sentinel Docs',
+  description:
+    "Configure Sentinel's WAF to detect and block SQL injection, XSS, path traversal, and command injection attacks in your Go application.",
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/waf',
+  },
+  openGraph: {
+    title: 'Web Application Firewall (WAF) - Sentinel Docs',
+    description:
+      "Configure Sentinel's WAF to detect and block SQL injection, XSS, path traversal, and command injection attacks in your Go application.",
+    url: 'https://sentinel-go-sdk.vercel.app/docs/waf',
+    type: 'article',
+  },
+};
 
 export default function WAF() {
   return (
     <>
+      <FAQSchema
+        questions={[
+          {
+            q: 'What attacks does the Sentinel WAF detect?',
+            a: 'Sentinel WAF detects eight attack categories covering the OWASP Top 10: SQL injection, cross-site scripting (XSS), path traversal, command injection, server-side request forgery (SSRF), XML external entity injection (XXE), local file inclusion (LFI), and open redirect attacks.',
+          },
+          {
+            q: 'What is the difference between ModeLog and ModeBlock?',
+            a: 'ModeLog detects and records threats but allows requests to proceed, making it ideal for initial rollout and auditing. ModeBlock detects threats and rejects requests with HTTP 403 Forbidden, preventing malicious payloads from reaching your application handlers.',
+          },
+          {
+            q: 'How do I add custom WAF rules in Sentinel?',
+            a: 'Add custom rules via the CustomRules field using WAFRule structs. Each rule specifies a regex pattern, which request parts to inspect (path, query, headers, body), a severity level, and an action (block or log). Custom rules are compiled once at startup for performance.',
+          },
+          {
+            q: 'How do I exclude routes from WAF inspection?',
+            a: 'Use the ExcludeRoutes field with a list of URL paths like /health or /metrics to skip WAF inspection entirely. You can also use ExcludeIPs with IP addresses or CIDR ranges to bypass the WAF for trusted internal services or monitoring systems.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Sentinel Web Application Firewall (WAF)"
+        description="Configure Sentinel's WAF to detect and block SQL injection, XSS, path traversal, and command injection attacks in your Go application."
+        url="https://sentinel-go-sdk.vercel.app/docs/waf"
+      />
+      <SpeakableSchema
+        url="https://sentinel-go-sdk.vercel.app/docs/waf"
+        cssSelector={['.prose h1', '.prose h2', '.prose p']}
+      />
       <h1>Web Application Firewall (WAF)</h1>
       <p>
         Sentinel includes a built-in Web Application Firewall that inspects every incoming HTTP

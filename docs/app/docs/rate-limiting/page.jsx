@@ -1,11 +1,55 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Rate Limiting - Sentinel Docs' };
+export const metadata = {
+  title: 'Rate Limiting - Sentinel Docs',
+  description:
+    'Set up multi-dimensional rate limiting in Sentinel with per-IP, per-user, per-route, and global limits using sliding window counters.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/rate-limiting',
+  },
+  openGraph: {
+    title: 'Rate Limiting - Sentinel Docs',
+    description:
+      'Set up multi-dimensional rate limiting in Sentinel with per-IP, per-user, per-route, and global limits using sliding window counters.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/rate-limiting',
+    type: 'article',
+  },
+};
 
 export default function RateLimiting() {
   return (
     <>
+      <FAQSchema
+        questions={[
+          {
+            q: 'What rate limit types does Sentinel support?',
+            a: 'Sentinel supports four independent rate limit dimensions: per-IP (each client IP gets its own counter), per-user (requires a UserIDExtractor function), per-route (different limits for specific endpoints), and global (a single counter shared across all requests).',
+          },
+          {
+            q: 'How do sliding window counters work in Sentinel?',
+            a: 'Sliding window counters track request counts within a rolling time window. When a request arrives, Sentinel checks if the window has expired and resets the counter if needed, then increments it. A background goroutine cleans up expired counters every 30 seconds.',
+          },
+          {
+            q: 'How do I set per-route rate limits in Sentinel?',
+            a: 'Use the ByRoute field with a map of route paths to Limit structs. Each key is an exact route path like /api/login, and the value specifies maximum requests and time window. Route limits are tracked per IP, so each client gets its own counter per route.',
+          },
+          {
+            q: 'What happens when a client is rate limited?',
+            a: 'When a limit is exceeded, Sentinel returns HTTP 429 Too Many Requests with a JSON body containing an error code. Response headers include X-RateLimit-Limit, X-RateLimit-Remaining, and Retry-After so clients can self-regulate their request rate.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Sentinel Rate Limiting"
+        description="Set up multi-dimensional rate limiting in Sentinel with per-IP, per-user, per-route, and global limits using sliding window counters."
+        url="https://sentinel-go-sdk.vercel.app/docs/rate-limiting"
+      />
+      <SpeakableSchema
+        url="https://sentinel-go-sdk.vercel.app/docs/rate-limiting"
+        cssSelector={['.prose h1', '.prose h2', '.prose p']}
+      />
       <h1>Rate Limiting</h1>
       <p>
         Sentinel provides multi-dimensional rate limiting with sliding window counters. You can

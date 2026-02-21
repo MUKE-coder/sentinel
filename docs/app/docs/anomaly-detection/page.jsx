@@ -1,11 +1,57 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Anomaly Detection - Sentinel Docs' };
+export const metadata = {
+  title: 'Anomaly Detection - Sentinel Docs',
+  description:
+    'Detect unusual traffic patterns with Sentinel\'s statistical anomaly detection. Configurable sensitivity for identifying security anomalies.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/anomaly-detection',
+  },
+  openGraph: {
+    title: 'Anomaly Detection - Sentinel Docs',
+    description:
+      'Detect unusual traffic patterns with Sentinel\'s statistical anomaly detection. Configurable sensitivity for identifying security anomalies.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/anomaly-detection',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function AnomalyDetection() {
   return (
     <>
+      <FAQSchema
+        questions={[
+          {
+            q: 'What anomalies does Sentinel detect?',
+            a: 'Sentinel detects six types of anomalies: off-hours access, unusual route access, velocity spikes exceeding 3x the baseline, impossible travel from new countries or IPs, data exfiltration with abnormally large responses, and credential stuffing patterns.',
+          },
+          {
+            q: 'What are the anomaly detection sensitivity levels in Sentinel?',
+            a: 'Sentinel offers three levels: Low (threshold 50, fewest alerts), Medium (threshold 30, balanced detection and recommended starting point), and High (threshold 15, aggressive detection for high-security environments). Each level sets the minimum anomaly score to trigger an event.',
+          },
+          {
+            q: 'How does baseline learning work in Sentinel anomaly detection?',
+            a: 'Sentinel builds per-user behavioral baselines from historical activity within a configurable learning period (default 7 days). Baselines track active hours, typical routes, request velocity, source IPs, countries, and average response sizes. A minimum of 10 activity records is required.',
+          },
+          {
+            q: 'Does Sentinel anomaly detection generate alerts?',
+            a: 'Yes. When the cumulative anomaly score exceeds the sensitivity threshold, Sentinel emits a ThreatEvent with type AnomalyDetected. These events are informational and non-blocking, but can trigger alerts via Slack, email, or webhook when paired with the alerting system.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Anomaly Detection - Sentinel Docs"
+        description="Detect unusual traffic patterns with Sentinel's statistical anomaly detection. Configurable sensitivity for identifying security anomalies."
+        url="https://sentinel-go-sdk.vercel.app/docs/anomaly-detection"
+      />
+      <SpeakableSchema
+        url="https://sentinel-go-sdk.vercel.app/docs/anomaly-detection"
+        cssSelector={['h1', 'h2', '.callout']}
+      />
+
       <h1>Anomaly Detection</h1>
       <p>
         Sentinel includes a statistical anomaly detection system that identifies unusual traffic

@@ -1,11 +1,54 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Alerting - Sentinel Docs' };
+export const metadata = {
+  title: 'Alerting - Sentinel Docs',
+  description:
+    'Configure real-time security alerts via Slack, email, and webhooks in Sentinel. Set severity thresholds for notification dispatch.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/alerting',
+  },
+  openGraph: {
+    title: 'Alerting - Sentinel Docs',
+    description:
+      'Configure real-time security alerts via Slack, email, and webhooks in Sentinel. Set severity thresholds for notification dispatch.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/alerting',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function Alerting() {
   return (
     <>
+      <FAQSchema
+        faqs={[
+          {
+            question: 'What alert providers does Sentinel support?',
+            answer: 'Sentinel supports three alert providers out of the box: Slack (via incoming webhook URL), email (via SMTP with HTML-formatted messages), and custom webhooks (JSON POST to any URL with optional headers). All three can run simultaneously.',
+          },
+          {
+            question: 'How do I configure Slack alerts in Sentinel?',
+            answer: 'Set the Slack field in AlertConfig to a SlackConfig pointer containing your Slack incoming webhook URL. Create the webhook at api.slack.com/apps by enabling Incoming Webhooks on your app and adding a webhook to your desired channel.',
+          },
+          {
+            question: 'Can I use multiple alert providers at the same time in Sentinel?',
+            answer: 'Yes. You can configure Slack, email, and webhook providers simultaneously. When a qualifying threat event occurs, alerts are dispatched to every configured provider concurrently. A failure in one provider does not prevent the others from receiving the alert.',
+          },
+          {
+            question: 'How does severity filtering work for Sentinel alerts?',
+            answer: 'The MinSeverity field controls which threat events trigger alerts. Only events with severity equal to or above the threshold are dispatched. The default is High, meaning only High and Critical events generate alerts. Set it to SeverityLow to alert on everything.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Alerting - Sentinel Docs"
+        description="Configure real-time security alerts via Slack, email, and webhooks in Sentinel. Set severity thresholds for notification dispatch."
+        url="https://sentinel-go-sdk.vercel.app/docs/alerting"
+      />
+      <SpeakableSchema url="https://sentinel-go-sdk.vercel.app/docs/alerting" />
+
       <h1>Alerting</h1>
       <p>
         Sentinel includes a built-in alerting system that sends real-time notifications when

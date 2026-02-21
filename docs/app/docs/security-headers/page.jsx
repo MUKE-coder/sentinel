@@ -1,11 +1,57 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Security Headers - Sentinel Docs' };
+export const metadata = {
+  title: 'Security Headers - Sentinel Docs',
+  description:
+    'Configure HTTP security headers in Sentinel including CSP, HSTS, X-Frame-Options, and Referrer-Policy for your Go/Gin application.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/security-headers',
+  },
+  openGraph: {
+    title: 'Security Headers - Sentinel Docs',
+    description:
+      'Configure HTTP security headers in Sentinel including CSP, HSTS, X-Frame-Options, and Referrer-Policy for your Go/Gin application.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/security-headers',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function SecurityHeaders() {
   return (
     <>
+      <FAQSchema
+        questions={[
+          {
+            q: 'What security headers does Sentinel set by default?',
+            a: 'Sentinel automatically sets three headers out of the box: X-Frame-Options (DENY), X-Content-Type-Options (nosniff), and Referrer-Policy (strict-origin-when-cross-origin). These are active with zero configuration when you call sentinel.Mount().',
+          },
+          {
+            q: 'How do I enable HSTS in Sentinel?',
+            a: 'Set StrictTransportSecurity to true in your HeaderConfig. Sentinel emits the header with max-age=63072000 (2 years), includeSubDomains, and preload directives. Only enable HSTS when your site and all subdomains fully support HTTPS.',
+          },
+          {
+            q: 'How do I configure Content-Security-Policy (CSP) in Sentinel?',
+            a: 'Set the ContentSecurityPolicy string field in HeaderConfig to your desired policy, for example "default-src \'self\'; script-src \'self\'". Sentinel does not set a default CSP because every application has different resource requirements.',
+          },
+          {
+            q: 'Are Sentinel security headers enabled by default?',
+            a: 'Yes. Unlike most Sentinel features, security headers are active automatically when you call sentinel.Mount(). X-Frame-Options, X-Content-Type-Options, and Referrer-Policy are injected into every response with no configuration needed.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Security Headers - Sentinel Docs"
+        description="Configure HTTP security headers in Sentinel including CSP, HSTS, X-Frame-Options, and Referrer-Policy for your Go/Gin application."
+        url="https://sentinel-go-sdk.vercel.app/docs/security-headers"
+      />
+      <SpeakableSchema
+        url="https://sentinel-go-sdk.vercel.app/docs/security-headers"
+        cssSelector={['h1', 'h2', '.callout']}
+      />
+
       <h1>Security Headers</h1>
       <p>
         Sentinel automatically injects HTTP security headers into every response. The headers

@@ -1,11 +1,59 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Getting Started - Sentinel Docs' };
+export const metadata = {
+  title: 'Getting Started - Sentinel Docs',
+  description:
+    'Learn how to install and set up Sentinel, the production-grade security SDK for Go/Gin applications. Zero-config setup with a single Mount() call.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/getting-started',
+  },
+  openGraph: {
+    title: 'Getting Started - Sentinel Docs',
+    description:
+      'Learn how to install and set up Sentinel, the production-grade security SDK for Go/Gin applications. Zero-config setup with a single Mount() call.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/getting-started',
+    type: 'article',
+  },
+};
 
 export default function GettingStarted() {
   return (
     <>
+      <FAQSchema
+        questions={[
+          {
+            q: 'What is Sentinel for Go?',
+            a: 'Sentinel is a production-grade security intelligence SDK for Go applications using the Gin framework. It provides WAF protection, rate limiting, threat detection, AI-powered analysis, and an embedded React dashboard, all mountable with a single function call.',
+          },
+          {
+            q: 'How do I install Sentinel?',
+            a: 'Install Sentinel with go get github.com/MUKE-coder/sentinel. It requires Go 1.24 or later and uses pure-Go SQLite, so no CGo or C compiler is needed. It works out of the box on all platforms including Linux, macOS, and Windows.',
+          },
+          {
+            q: 'Does Sentinel require CGo?',
+            a: 'No. Sentinel uses a pure-Go SQLite implementation, eliminating the need for CGo or any C compiler. This makes cross-compilation straightforward and simplifies Docker builds without any native dependency requirements.',
+          },
+          {
+            q: 'What does sentinel.Mount() do?',
+            a: 'Mount() initializes the entire Sentinel stack in one call. It sets up storage, runs migrations, configures middleware for WAF, rate limiting, and security headers, registers the REST API and WebSocket endpoints, and serves the embedded React dashboard.',
+          },
+          {
+            q: 'What is the default Sentinel dashboard URL?',
+            a: 'The default dashboard is served at /sentinel/ui with default credentials admin/sentinel. You can customize the URL prefix, username, password, and JWT secret key through the DashboardConfig section of your configuration struct.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Getting Started with Sentinel"
+        description="Learn how to install and set up Sentinel, the production-grade security SDK for Go/Gin applications."
+        url="https://sentinel-go-sdk.vercel.app/docs/getting-started"
+      />
+      <SpeakableSchema
+        url="https://sentinel-go-sdk.vercel.app/docs/getting-started"
+        cssSelector={['.prose h1', '.prose h2', '.prose p']}
+      />
       <h1>Getting Started</h1>
       <p>
         Sentinel is a production-grade security intelligence SDK for Go applications using the

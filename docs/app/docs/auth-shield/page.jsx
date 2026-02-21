@@ -1,11 +1,55 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Auth Shield - Sentinel Docs' };
+export const metadata = {
+  title: 'Auth Shield - Sentinel Docs',
+  description:
+    "Protect login endpoints from brute-force attacks with Sentinel's Auth Shield. Automatic lockouts after configurable failed attempts.",
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/auth-shield',
+  },
+  openGraph: {
+    title: 'Auth Shield - Sentinel Docs',
+    description:
+      "Protect login endpoints from brute-force attacks with Sentinel's Auth Shield. Automatic lockouts after configurable failed attempts.",
+    url: 'https://sentinel-go-sdk.vercel.app/docs/auth-shield',
+    type: 'article',
+  },
+};
 
 export default function AuthShield() {
   return (
     <>
+      <FAQSchema
+        questions={[
+          {
+            q: 'What is Sentinel Auth Shield?',
+            a: 'Auth Shield is a Sentinel middleware that protects login endpoints from brute-force attacks and credential stuffing. It monitors authentication attempts per IP, automatically locks out offending clients after repeated failures, and emits threat events into the Sentinel pipeline.',
+          },
+          {
+            q: 'How does Auth Shield lockout work?',
+            a: 'Auth Shield tracks failed login attempts (non-2xx responses) per IP within a sliding time window. When failures reach MaxFailedAttempts (default 5), the IP is locked out for LockoutDuration (default 15 minutes). Locked IPs receive HTTP 429 responses.',
+          },
+          {
+            q: 'How do I configure the failed attempt threshold?',
+            a: 'Set MaxFailedAttempts in AuthShieldConfig to your desired threshold. The default is 5 failed attempts. Pair it with LockoutDuration to control how long the lockout lasts. A successful login resets the failure counter for that IP and username to zero.',
+          },
+          {
+            q: 'Does Auth Shield protect against credential stuffing?',
+            a: 'Yes. Enable CredentialStuffingDetection in AuthShieldConfig to detect a single IP trying many different usernames (more than 10 unique usernames within the window). This triggers a high-severity CredentialStuffing threat event and can be combined with alerting.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Sentinel Auth Shield"
+        description="Protect login endpoints from brute-force attacks with Sentinel's Auth Shield. Automatic lockouts after configurable failed attempts."
+        url="https://sentinel-go-sdk.vercel.app/docs/auth-shield"
+      />
+      <SpeakableSchema
+        url="https://sentinel-go-sdk.vercel.app/docs/auth-shield"
+        cssSelector={['.prose h1', '.prose h2', '.prose p']}
+      />
       <h1>Auth Shield</h1>
       <p>
         Auth Shield protects your login endpoints from brute-force attacks and credential stuffing.

@@ -4,6 +4,16 @@ import {
   Lock, Eye, BarChart3, Terminal, ArrowRight, ChevronRight,
   Globe, Gauge, Database, GitBranch, Youtube, Linkedin, Heart, ExternalLink
 } from 'lucide-react';
+import { FAQSchema, HowToSchema } from '@/components/JsonLd';
+
+export const metadata = {
+  title: 'Sentinel - Production-Grade Security Intelligence SDK for Go',
+  description:
+    'Drop-in security middleware for Go/Gin applications. WAF protection, rate limiting, threat detection, AI-powered analysis, anomaly detection, compliance reports, and an embedded React dashboard.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app',
+  },
+};
 
 const features = [
   {
@@ -90,6 +100,40 @@ const stats = [
 export default function Home() {
   return (
     <div className="relative">
+      <FAQSchema
+        faqs={[
+          {
+            question: 'What is Sentinel for Go?',
+            answer: 'Sentinel is a production-grade security intelligence SDK for Go applications using the Gin framework. It provides WAF protection, rate limiting, threat detection, AI-powered analysis, audit logging, compliance reports, and an embedded React dashboard — all mountable with a single sentinel.Mount() function call.',
+          },
+          {
+            question: 'How do I install Sentinel?',
+            answer: 'Install Sentinel by running "go get github.com/MUKE-coder/sentinel". It requires Go 1.24 or later and uses pure-Go SQLite, so no CGo or C compiler is needed. It works on Linux, macOS, and Windows without any native dependencies.',
+          },
+          {
+            question: 'Does Sentinel require any configuration?',
+            answer: 'No. Sentinel works out of the box with zero configuration using sentinel.Config{}. This gives you sensible defaults including in-memory storage and a dashboard at /sentinel/ui. You can optionally enable WAF, rate limiting, AI analysis, alerting, and other features as needed.',
+          },
+          {
+            question: 'What security features does Sentinel provide?',
+            answer: 'Sentinel provides a Web Application Firewall (WAF) for SQL injection, XSS, and path traversal detection, multi-dimensional rate limiting, brute-force protection, threat actor profiling, anomaly detection, AI-powered threat analysis via Claude, OpenAI or Gemini, compliance reports (GDPR, PCI-DSS, SOC 2), and real-time alerting.',
+          },
+          {
+            question: 'Does Sentinel have a dashboard?',
+            answer: 'Yes. Sentinel includes an embedded React dashboard with 13 pages served at /sentinel/ui. It provides real-time WebSocket updates, security score visualization, threat analysis, WAF management, rate limit monitoring, analytics charts, AI insights, and compliance report generation. Default credentials are admin/sentinel.',
+          },
+        ]}
+      />
+      <HowToSchema
+        name="How to Add Security to a Go/Gin Application with Sentinel"
+        description="Install and configure Sentinel to add WAF, rate limiting, threat detection, and a security dashboard to your Go application."
+        steps={[
+          { name: 'Install Sentinel', text: 'Run "go get github.com/MUKE-coder/sentinel" to add the package to your Go module.' },
+          { name: 'Import and Mount', text: 'Import the sentinel package and call sentinel.Mount(router, nil, sentinel.Config{}) on your Gin engine before defining routes.' },
+          { name: 'Enable Features', text: 'Configure WAF, rate limiting, auth shield, and other features by setting fields in sentinel.Config. All features are opt-in with sensible defaults.' },
+          { name: 'Access the Dashboard', text: 'Start your application and visit /sentinel/ui to access the embedded React security dashboard with real-time monitoring.' },
+        ]}
+      />
       {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-sentinel-50/50 via-transparent to-transparent dark:from-sentinel-950/30 dark:via-transparent" />

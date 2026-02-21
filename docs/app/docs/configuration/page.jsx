@@ -1,11 +1,59 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Configuration - Sentinel Docs' };
+export const metadata = {
+  title: 'Configuration - Sentinel Docs',
+  description:
+    'Complete configuration reference for Sentinel. All options for WAF, rate limiting, storage, auth shield, AI, alerting, and more.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/configuration',
+  },
+  openGraph: {
+    title: 'Configuration - Sentinel Docs',
+    description:
+      'Complete configuration reference for Sentinel. All options for WAF, rate limiting, storage, auth shield, AI, alerting, and more.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/configuration',
+    type: 'article',
+  },
+};
 
 export default function Configuration() {
   return (
     <>
+      <FAQSchema
+        questions={[
+          {
+            q: 'What is the default Sentinel configuration?',
+            a: 'With an empty sentinel.Config{}, Sentinel applies sensible defaults: SQLite storage at sentinel.db, the dashboard enabled at /sentinel/ui with admin/sentinel credentials, security headers active, and performance monitoring on. WAF, rate limiting, and anomaly detection are opt-in.',
+          },
+          {
+            q: 'What storage backends does Sentinel support?',
+            a: 'Sentinel supports four storage backends: SQLite (pure Go, no CGo, recommended for most deployments), in-memory (for development and testing), PostgreSQL (for high-availability production), and MySQL/MariaDB. SQLite is the default driver.',
+          },
+          {
+            q: 'How do I enable the WAF in Sentinel?',
+            a: 'Enable the WAF by setting WAF.Enabled to true and choosing a mode. Use sentinel.ModeLog to detect and log threats without blocking, or sentinel.ModeBlock to reject malicious requests with HTTP 403. Each rule category can be tuned independently.',
+          },
+          {
+            q: 'How do I set up AI analysis in Sentinel?',
+            a: 'Configure AI by setting the AI field with a provider (sentinel.Claude, sentinel.OpenAI, or sentinel.Gemini), your API key, and optionally a model override. Enable DailySummary for automated security reports. The AI field is a pointer; leave it nil to disable.',
+          },
+          {
+            q: 'How do I configure Sentinel alerts?',
+            a: 'Set the Alerts section with a MinSeverity threshold and one or more channels: Slack (webhook URL), email (SMTP settings and recipients), or webhook (URL and custom headers). All configured channels receive alerts concurrently when the severity threshold is met.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Sentinel Configuration Reference"
+        description="Complete configuration reference for Sentinel. All options for WAF, rate limiting, storage, auth shield, AI, alerting, and more."
+        url="https://sentinel-go-sdk.vercel.app/docs/configuration"
+      />
+      <SpeakableSchema
+        url="https://sentinel-go-sdk.vercel.app/docs/configuration"
+        cssSelector={['.prose h1', '.prose h2', '.prose p']}
+      />
       <h1>Configuration Reference</h1>
       <p>
         Sentinel is configured by passing a <code>sentinel.Config</code> struct to{' '}

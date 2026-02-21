@@ -1,11 +1,54 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Audit Logging - Sentinel Docs' };
+export const metadata = {
+  title: 'Audit Logging - Sentinel Docs',
+  description:
+    'Automatically track database changes with Sentinel\'s GORM plugin. Record creates, updates, and deletes with user attribution.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/audit-logging',
+  },
+  openGraph: {
+    title: 'Audit Logging - Sentinel Docs',
+    description:
+      'Automatically track database changes with Sentinel\'s GORM plugin. Record creates, updates, and deletes with user attribution.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/audit-logging',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function AuditLogging() {
   return (
     <>
+      <FAQSchema
+        faqs={[
+          {
+            question: 'What is the Sentinel GORM audit logging plugin?',
+            answer: 'The Sentinel GORM audit plugin is an optional package that automatically tracks every database mutation through GORM callbacks. It records creates, updates, and deletes as immutable audit log entries with full user attribution, flowing through an async pipeline.',
+          },
+          {
+            question: 'What database operations does the Sentinel audit plugin track?',
+            answer: 'The plugin tracks three GORM mutation operations: CREATE (captures the new record), UPDATE (captures before and after state), and DELETE (captures the record before removal). Read operations are not audited and are handled by the query shield feature instead.',
+          },
+          {
+            question: 'How do I add user attribution to Sentinel audit log entries?',
+            answer: 'Use sentinelgorm.WithRequestInfo() to attach request metadata to the GORM context. Pass IP, UserID, UserEmail, UserRole, UserAgent, and RequestID from your HTTP handler, then use db.WithContext(ctx) for full attribution on every audit entry.',
+          },
+          {
+            question: 'Does the Sentinel audit plugin store old and new values for updates?',
+            answer: 'Yes. For UPDATE operations the plugin captures the model state before the update runs and after it completes. Both states are serialized as JSON in the Before and After fields, giving you a complete snapshot that you can diff to see exactly which fields changed.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Audit Logging - Sentinel Docs"
+        description="Automatically track database changes with Sentinel's GORM plugin. Record creates, updates, and deletes with user attribution."
+        url="https://sentinel-go-sdk.vercel.app/docs/audit-logging"
+      />
+      <SpeakableSchema url="https://sentinel-go-sdk.vercel.app/docs/audit-logging" />
+
       <h1>Audit Logging</h1>
       <p>
         Sentinel includes a GORM plugin that automatically tracks every database mutation —

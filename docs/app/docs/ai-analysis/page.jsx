@@ -1,11 +1,54 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'AI Analysis - Sentinel Docs' };
+export const metadata = {
+  title: 'AI Analysis - Sentinel Docs',
+  description:
+    'Integrate Claude, OpenAI, or Gemini for AI-powered threat analysis, actor assessment, natural language queries, and WAF recommendations.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/ai-analysis',
+  },
+  openGraph: {
+    title: 'AI Analysis - Sentinel Docs',
+    description:
+      'Integrate Claude, OpenAI, or Gemini for AI-powered threat analysis, actor assessment, natural language queries, and WAF recommendations.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/ai-analysis',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function AIAnalysis() {
   return (
     <>
+      <FAQSchema
+        faqs={[
+          {
+            question: 'Which AI providers does Sentinel support for threat analysis?',
+            answer: 'Sentinel supports three AI providers: Anthropic Claude (default model claude-sonnet-4-20250514), OpenAI GPT (default model gpt-4o), and Google Gemini (default model gemini-2.0-flash). Each provider can be configured with a custom model override if needed.',
+          },
+          {
+            question: 'Is AI required to use Sentinel?',
+            answer: 'No. AI analysis is entirely optional. All core security features including WAF, rate limiting, anomaly detection, threat intelligence, and alerting operate independently. When AI is not configured, endpoints return a graceful "AI not configured" message instead of errors.',
+          },
+          {
+            question: 'What can Sentinel AI analyze?',
+            answer: 'Sentinel AI provides five capabilities: detailed threat event analysis, actor risk assessment by IP, daily security posture summaries, natural language queries about your security data, and WAF rule recommendations based on recent attack patterns.',
+          },
+          {
+            question: 'Are AI responses cached in Sentinel?',
+            answer: 'Yes. Sentinel wraps every AI provider with a CachedProvider that caches threat analyses, actor assessments, daily summaries, and WAF recommendations with a default one-hour TTL. Natural language queries are never cached since each query is unique.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="AI Analysis - Sentinel Docs"
+        description="Integrate Claude, OpenAI, or Gemini for AI-powered threat analysis, actor assessment, natural language queries, and WAF recommendations."
+        url="https://sentinel-go-sdk.vercel.app/docs/ai-analysis"
+      />
+      <SpeakableSchema url="https://sentinel-go-sdk.vercel.app/docs/ai-analysis" />
+
       <h1>AI Analysis</h1>
       <p>
         Sentinel includes an optional AI-powered analysis system that brings intelligent threat

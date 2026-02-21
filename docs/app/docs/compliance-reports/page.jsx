@@ -1,11 +1,54 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Compliance Reports - Sentinel Docs' };
+export const metadata = {
+  title: 'Compliance Reports - Sentinel Docs',
+  description:
+    'Generate GDPR, PCI-DSS, and SOC 2 compliance reports from your Sentinel security data with JSON export support.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/compliance-reports',
+  },
+  openGraph: {
+    title: 'Compliance Reports - Sentinel Docs',
+    description:
+      'Generate GDPR, PCI-DSS, and SOC 2 compliance reports from your Sentinel security data with JSON export support.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/compliance-reports',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function ComplianceReports() {
   return (
     <>
+      <FAQSchema
+        faqs={[
+          {
+            question: 'What compliance report types does Sentinel support?',
+            answer: 'Sentinel supports three compliance report types: GDPR (user data access, exports, deletions, and unusual access patterns), PCI-DSS (authentication events, security incidents, blocked threats, and requirements status), and SOC 2 (monitoring evidence, incident response, and access control).',
+          },
+          {
+            question: 'How do I generate a GDPR report in Sentinel?',
+            answer: 'Call GET /sentinel/api/reports/gdpr with an optional ?window query parameter (default 720h for 30 days). The report aggregates user data access events, export and deletion counts, and unusual access patterns detected by anomaly detection. No extra configuration is needed.',
+          },
+          {
+            question: 'Can Sentinel compliance reports be exported as JSON?',
+            answer: 'Yes. Both the API and the dashboard return reports as JSON. The dashboard includes an Export JSON button that downloads a file named sentinel-<type>-report-<date>.json. Programmatically, pipe the API response through jq to extract the data field.',
+          },
+          {
+            question: 'What data is included in Sentinel compliance reports?',
+            answer: 'Reports aggregate threat events, audit logs, user activity, and access control records from data Sentinel already collects. GDPR reports include per-user summaries, PCI-DSS maps to requirement categories with compliance status, and SOC 2 covers monitoring and incident response.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Compliance Reports - Sentinel Docs"
+        description="Generate GDPR, PCI-DSS, and SOC 2 compliance reports from your Sentinel security data with JSON export support."
+        url="https://sentinel-go-sdk.vercel.app/docs/compliance-reports"
+      />
+      <SpeakableSchema url="https://sentinel-go-sdk.vercel.app/docs/compliance-reports" />
+
       <h1>Compliance Reports</h1>
       <p>
         Sentinel can generate compliance reports for <strong>GDPR</strong>,{' '}

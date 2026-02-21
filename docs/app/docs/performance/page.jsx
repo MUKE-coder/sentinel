@@ -1,11 +1,54 @@
 import CodeBlock from '@/components/CodeBlock';
 import Callout from '@/components/Callout';
+import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/JsonLd';
 
-export const metadata = { title: 'Performance Monitoring - Sentinel Docs' };
+export const metadata = {
+  title: 'Performance Monitoring - Sentinel Docs',
+  description:
+    'Track per-route latency (p50/p95/p99), error rates, and response sizes with Sentinel\'s performance monitoring middleware for Go/Gin.',
+  alternates: {
+    canonical: 'https://sentinel-go-sdk.vercel.app/docs/performance',
+  },
+  openGraph: {
+    title: 'Performance Monitoring - Sentinel Docs',
+    description:
+      'Track per-route latency (p50/p95/p99), error rates, and response sizes with Sentinel\'s performance monitoring middleware for Go/Gin.',
+    url: 'https://sentinel-go-sdk.vercel.app/docs/performance',
+    siteName: 'Sentinel',
+    type: 'article',
+  },
+};
 
 export default function PerformanceMonitoring() {
   return (
     <>
+      <FAQSchema
+        faqs={[
+          {
+            question: 'What metrics does Sentinel performance monitoring track?',
+            answer: 'Sentinel tracks per-route latency percentiles (p50, p95, p99), error rates based on 5xx status codes, throughput in requests per second, average response body size, and slow request counts. All metrics are computed both per-route and system-wide.',
+          },
+          {
+            question: 'What latency percentiles does Sentinel provide?',
+            answer: 'Sentinel computes p50 (median), p95 (tail performance), and p99 (worst-case excluding outliers) latency percentiles. These are maintained per route and globally, giving you precise visibility into how each endpoint performs under real traffic.',
+          },
+          {
+            question: 'How do I set a slow request threshold in Sentinel?',
+            answer: 'Set the SlowRequestThreshold field in PerformanceConfig to any time.Duration value. For example, 500 * time.Millisecond or 2 * time.Second. Requests exceeding this duration are flagged as slow in both the API metrics and the dashboard.',
+          },
+          {
+            question: 'Does Sentinel performance monitoring add overhead to requests?',
+            answer: 'Sentinel adds negligible overhead. It uses nanosecond-precision timing around your handlers and emits metrics to an async pipeline via a non-blocking send. If the pipeline buffer is full, the metric is dropped rather than stalling the response.',
+          },
+        ]}
+      />
+      <TechArticleSchema
+        title="Performance Monitoring - Sentinel Docs"
+        description="Track per-route latency (p50/p95/p99), error rates, and response sizes with Sentinel's performance monitoring middleware for Go/Gin."
+        url="https://sentinel-go-sdk.vercel.app/docs/performance"
+      />
+      <SpeakableSchema url="https://sentinel-go-sdk.vercel.app/docs/performance" />
+
       <h1>Performance Monitoring</h1>
       <p>
         Sentinel automatically tracks per-route latency and throughput using lightweight middleware.
