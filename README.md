@@ -1,6 +1,17 @@
 # Sentinel
 
+[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
+[![Release](https://img.shields.io/github/v/release/MUKE-coder/sentinel?color=00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Tests](https://img.shields.io/badge/Tests-12%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
+[![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
+[![Dashboard Pages](https://img.shields.io/badge/Dashboard-13%20pages-purple)](https://github.com/MUKE-coder/sentinel)
+[![API Endpoints](https://img.shields.io/badge/API-40%2B%20endpoints-yellow)](https://github.com/MUKE-coder/sentinel)
+
 Production-grade security intelligence SDK for Go applications. Drop-in middleware for [Gin](https://github.com/gin-gonic/gin) that provides WAF protection, rate limiting, threat detection, audit logging, anomaly detection, AI-powered analysis, and an embedded React dashboard — all mountable with a single function call.
+
+**[Documentation](https://sentinel-go-sdk.vercel.app)** | **[Getting Started](https://sentinel-go-sdk.vercel.app/docs/getting-started)** | **[API Reference](https://sentinel-go-sdk.vercel.app/docs/api-reference)**
 
 ```go
 r := gin.Default()
@@ -12,7 +23,7 @@ r.Run(":8080")
 ## Features
 
 - **Web Application Firewall (WAF)** — SQL injection, XSS, path traversal, command injection, SSRF, XXE detection with configurable strictness levels and custom rules
-- **Rate Limiting** — Per-IP, per-user, per-route, and global rate limits with sliding windows
+- **Rate Limiting** — Per-IP, per-user, per-route, and global rate limits with sliding windows and route exclusions
 - **Threat Intelligence** — Automatic threat actor profiling, risk scoring, and IP reputation checking
 - **Anomaly Detection** — Statistical anomaly detection with configurable sensitivity
 - **Auth Shield** — Brute-force protection with automatic lockouts
@@ -85,6 +96,7 @@ config := sentinel.Config{
             PathTraversal:    sentinel.RuleStrict,
             CommandInjection: sentinel.RuleStrict,
         },
+        ExcludeRoutes: []string{"/health"},
         CustomRules: []sentinel.WAFRule{
             {
                 ID:        "block-admin-enum",
@@ -105,6 +117,7 @@ config := sentinel.Config{
         ByRoute: map[string]sentinel.Limit{
             "/api/login": {Requests: 5, Window: 15 * time.Minute},
         },
+        ExcludeRoutes: []string{"/health", "/metrics"},
     },
 
     AuthShield: sentinel.AuthShieldConfig{
@@ -200,6 +213,8 @@ The embedded React dashboard is served at `/sentinel/ui` (default credentials: a
 ## API Endpoints
 
 All endpoints are under `/sentinel/api/` (configurable via `Dashboard.Prefix`). Protected endpoints require a JWT token from the login endpoint.
+
+See the full [API Reference](https://sentinel-go-sdk.vercel.app/docs/api-reference) for details.
 
 ### Authentication
 | Method | Path | Description |
@@ -309,6 +324,7 @@ sentinel/
 │   └── sqlite/     # Pure-Go SQLite store (recommended for production)
 ├── ui/             # Embedded React dashboard (go:embed)
 │   └── dashboard/  # React 18 + Vite + TailwindCSS + Recharts
+├── docs/           # Documentation site (Next.js 16 + Tailwind v4)
 ├── examples/       # Example applications
 │   ├── basic/      # Minimal setup
 │   └── full/       # All features configured
@@ -333,6 +349,14 @@ sentinel/
 
 AI is entirely optional. When not configured, AI endpoints return a graceful "AI not configured" response and the dashboard shows setup instructions.
 
+## Documentation
+
+Full documentation is available at **[sentinel-go-sdk.vercel.app](https://sentinel-go-sdk.vercel.app)** with guides for every feature, code examples, and testing instructions.
+
 ## License
 
 MIT
+
+## Author
+
+Built with love by [JB](https://jb.desishub.com/) | [YouTube](https://www.youtube.com/@JBWEBDEVELOPER) | [LinkedIn](https://www.linkedin.com/in/muke-johnbaptist-95bb82198/)

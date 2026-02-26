@@ -89,6 +89,7 @@ type RateLimitConfig struct {
 	ByRoute         map[string]Limit
 	Global          *Limit
 	Strategy        RateLimitStrategy
+	ExcludeRoutes   []string
 	UserIDExtractor func(c *gin.Context) string
 }
 

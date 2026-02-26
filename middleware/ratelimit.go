@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -145,6 +146,14 @@ func RateLimitMiddleware(config sentinel.RateLimitConfig, limiter *RateLimiter, 
 
 		clientIP := extractClientIP(c)
 		path := c.Request.URL.Path
+
+		// Skip excluded routes
+		for _, excluded := range config.ExcludeRoutes {
+			if strings.HasPrefix(path, excluded) {
+				c.Next()
+				return
+			}
+		}
 
 		// Per-route limits (highest priority)
 		if config.ByRoute != nil {
