@@ -31,6 +31,12 @@ type DashboardConfig struct {
 	Username  string
 	Password  string
 	SecretKey string
+
+	// AllowInsecureDefaults must be set to true to start with the built-in
+	// default password ("sentinel") or default JWT secret. In release mode
+	// (GIN_MODE=release) Mount will refuse to start unless this is true,
+	// preventing accidental deployment with forgeable admin tokens.
+	AllowInsecureDefaults bool
 }
 
 // StorageConfig configures the storage backend.
@@ -50,6 +56,23 @@ type WAFConfig struct {
 	CustomRules   []WAFRule
 	ExcludeRoutes []string
 	ExcludeIPs    []string
+
+	// MaxBodyBytes is the maximum number of bytes the WAF will read and inspect
+	// from a request body. Default: 65536 (64 KB). Requests with bodies larger
+	// than this are inspected up to the limit; set RejectOversizedBody to true
+	// to refuse them instead.
+	MaxBodyBytes int64
+
+	// RejectOversizedBody, when true, causes the WAF to reject any request
+	// whose Content-Length exceeds MaxBodyBytes with 413 Payload Too Large,
+	// closing the inspection-bypass hole where attackers pad large bodies.
+	RejectOversizedBody bool
+
+	// TrustedProxies is a list of IPs or CIDRs whose X-Forwarded-For /
+	// X-Real-IP headers should be trusted. If empty, those headers are
+	// ignored and only the direct connection IP is used. Strongly
+	// recommended in production behind a known reverse proxy.
+	TrustedProxies []string
 }
 
 // RuleSet configures the sensitivity of each built-in WAF rule.
@@ -201,10 +224,10 @@ func (c *Config) ApplyDefaults() {
 		c.Dashboard.Username = "admin"
 	}
 	if c.Dashboard.Password == "" {
-		c.Dashboard.Password = "sentinel"
+		c.Dashboard.Password = DefaultInsecurePassword
 	}
 	if c.Dashboard.SecretKey == "" {
-		c.Dashboard.SecretKey = "sentinel-default-secret-change-me"
+		c.Dashboard.SecretKey = DefaultInsecureSecretKey
 	}
 
 	if c.Storage.Driver == "" {

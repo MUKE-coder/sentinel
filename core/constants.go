@@ -104,6 +104,14 @@ const (
 	GeoIPPaid GeoProvider = "geoip2"
 )
 
+// Default insecure credential constants. These are populated by ApplyDefaults
+// when the user provides no values, but Mount refuses to start with them
+// in release mode unless DashboardConfig.AllowInsecureDefaults is true.
+const (
+	DefaultInsecurePassword  = "sentinel"
+	DefaultInsecureSecretKey = "sentinel-default-secret-change-me"
+)
+
 // ThreatType defines the category of a detected threat.
 type ThreatType string
 

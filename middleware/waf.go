@@ -2,10 +2,10 @@ package middleware
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
-	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	sentinel "github.com/MUKE-coder/sentinel/core"
@@ -16,7 +16,18 @@ import (
 	"github.com/google/uuid"
 )
 
-const maxBodyRead = 10 * 1024 // 10KB
+// defaultMaxBodyBytes is the default inspection cap when WAFConfig.MaxBodyBytes
+// is unset. 64 KB is large enough to cover virtually all JSON API payloads
+// while bounding inspection cost.
+const defaultMaxBodyBytes int64 = 64 * 1024
+
+// ActorIDFromIP returns a stable, IPv6-safe actor identifier derived from
+// a SHA-256 hash of the IP. Exported so tests and downstream code can build
+// the same ID without re-implementing the scheme.
+func ActorIDFromIP(ip string) string {
+	sum := sha256.Sum256([]byte(ip))
+	return "actor_" + hex.EncodeToString(sum[:8])
+}
 
 // WAFMiddleware creates a Gin middleware that inspects requests for threats
 // and handles them according to the configured WAF mode.
@@ -69,13 +80,30 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 			}
 		}
 
-		// Read and restore request body
+		// Determine inspection cap
+		maxBody := config.MaxBodyBytes
+		if maxBody <= 0 {
+			maxBody = defaultMaxBodyBytes
+		}
+
+		// Reject oversized bodies entirely if configured. This closes the
+		// bypass where attackers hide payloads past the inspection cap.
+		if config.RejectOversizedBody && c.Request.ContentLength > maxBody {
+			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{
+				"error": "Request body exceeds inspection limit",
+				"code":  "WAF_BODY_TOO_LARGE",
+			})
+			return
+		}
+
+		// Read and restore request body up to the inspection cap.
 		var bodyStr string
-		if c.Request.Body != nil && c.Request.ContentLength > 0 {
-			bodyBytes, err := io.ReadAll(io.LimitReader(c.Request.Body, maxBodyRead))
+		if c.Request.Body != nil && c.Request.ContentLength != 0 {
+			bodyBytes, err := io.ReadAll(io.LimitReader(c.Request.Body, maxBody))
 			if err == nil {
 				bodyStr = string(bodyBytes)
-				// Restore body for downstream handlers
+				// Restore body for downstream handlers, preserving any bytes
+				// past the inspection cap so legitimate large uploads still work.
 				remaining, _ := io.ReadAll(c.Request.Body)
 				c.Request.Body = io.NopCloser(bytes.NewReader(append(bodyBytes, remaining...)))
 			}
@@ -125,7 +153,7 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 			ID:          uuid.New().String(),
 			Timestamp:   time.Now(),
 			IP:          clientIP,
-			ActorID:     "actor_" + strings.ReplaceAll(clientIP, ".", "_"),
+			ActorID:     ActorIDFromIP(clientIP),
 			Method:      c.Request.Method,
 			Path:        path,
 			UserAgent:   c.Request.UserAgent(),
@@ -172,14 +200,15 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 		default: // ModeLog
 			threatEvent.Blocked = false
 
+			// Run handlers first, capture status, then emit. Emitting before
+			// c.Next() races the worker goroutine against the mutation of
+			// StatusCode below.
+			c.Next()
+			threatEvent.StatusCode = c.Writer.Status()
+
 			if pipe != nil {
 				pipe.EmitThreat(threatEvent)
 			}
-
-			c.Next()
-
-			// Update status code after handler runs
-			threatEvent.StatusCode = c.Writer.Status()
 		}
 	}
 }
@@ -204,32 +233,3 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// extractClientIP returns the client IP from the request, handling proxied requests.
-func extractClientIP(c *gin.Context) string {
-	// Try X-Forwarded-For first
-	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-		parts := strings.SplitN(xff, ",", 2)
-		ip := strings.TrimSpace(parts[0])
-		if net.ParseIP(ip) != nil {
-			return ip
-		}
-	}
-
-	// Try X-Real-IP
-	if xri := c.GetHeader("X-Real-IP"); xri != "" {
-		if net.ParseIP(xri) != nil {
-			return xri
-		}
-	}
-
-	// Fall back to RemoteAddr
-	ip := c.ClientIP()
-	if ip == "" {
-		ip = c.Request.RemoteAddr
-		if host, _, err := net.SplitHostPort(ip); err == nil {
-			ip = host
-		}
-	}
-
-	return ip
-}

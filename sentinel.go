@@ -22,6 +22,7 @@ import (
 	"github.com/MUKE-coder/sentinel/ai"
 	"github.com/MUKE-coder/sentinel/alerting"
 	"github.com/MUKE-coder/sentinel/api"
+	"github.com/MUKE-coder/sentinel/core"
 	"github.com/MUKE-coder/sentinel/detection"
 	"github.com/MUKE-coder/sentinel/intelligence"
 	"github.com/MUKE-coder/sentinel/middleware"
@@ -47,6 +48,22 @@ import (
 // Any initialization error will cause a fatal log.
 func Mount(router *gin.Engine, db *gorm.DB, config Config) {
 	config.ApplyDefaults()
+
+	// Refuse to start with built-in default credentials in release mode unless
+	// the operator has explicitly opted in. This stops zero-config deployments
+	// from shipping with forgeable admin tokens and a known password.
+	if gin.Mode() == gin.ReleaseMode && !config.Dashboard.AllowInsecureDefaults {
+		if config.Dashboard.Password == core.DefaultInsecurePassword {
+			log.Fatalf("[sentinel] refusing to start in release mode with default dashboard password. Set Dashboard.Password or Dashboard.AllowInsecureDefaults=true.")
+		}
+		if config.Dashboard.SecretKey == core.DefaultInsecureSecretKey {
+			log.Fatalf("[sentinel] refusing to start in release mode with default JWT secret. Set Dashboard.SecretKey or Dashboard.AllowInsecureDefaults=true.")
+		}
+	}
+
+	// Configure trusted proxies for safe X-Forwarded-For handling across all
+	// middleware. Empty list = ignore proxy headers (the safe default).
+	middleware.ConfigureTrustedProxies(config.WAF.TrustedProxies)
 
 	// 1. Initialize storage adapter
 	var store storage.Store
