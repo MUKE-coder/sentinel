@@ -2,6 +2,37 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.0.1] - 2026-05-29
+
+Follow-up to v2.0.0 that closes the only gap shipped with the main release:
+dedicated dashboard pages for the two new features that previously only
+showed up in the generic threats feed.
+
+### Added
+
+- **Dashboard page: `/sentinel/ui/csp`** — Browser-reported CSP violations
+  as a first-class view. Top-of-page stat strip (total, distinct directives,
+  distinct blocked URIs), a "top blocked URIs grouped by directive"
+  aggregate panel, and a paginated list with a detail modal that breaks out
+  source-file / line / column / script-sample. Live-updates via the threats
+  WebSocket.
+- **Dashboard page: `/sentinel/ui/auth-shield`** — Live AuthShield state.
+  Counts of locked / CAPTCHA-tier / warming IPs, full table of per-IP
+  failure counts and lock expiry, and an inline tip when no CAPTCHA
+  provider is configured. Auto-refreshes every 10 seconds.
+- **`GET /sentinel/api/auth-shield/status`** — JSON snapshot of the
+  AuthShield's in-memory per-IP state plus the configured CAPTCHA provider
+  name. Returns `{enabled: false}` when AuthShield is off so the page can
+  render a useful empty state.
+- **`GET /sentinel/api/csp-violations/stats`** — Server-side aggregation of
+  CSP violations grouped by `(violated_directive, blocked_uri)`. The
+  dashboard's "top blocked" panel consumes this.
+
+### Notes
+
+- `middleware.AuthShield.Snapshot()` is now exported. Useful if you build
+  your own dashboard against the same data.
+
 ## [2.0.0] - 2026-05-29
 
 A security + architecture sweep. v2 closes four trivially-exploitable holes

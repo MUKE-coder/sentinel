@@ -15,6 +15,8 @@ import AIInsights from './pages/AIInsights';
 import Analytics from './pages/Analytics';
 import RateLimits from './pages/RateLimits';
 import Reports from './pages/Reports';
+import CSPViolations from './pages/CSPViolations';
+import AuthShield from './pages/AuthShield';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth();
@@ -51,6 +53,8 @@ function AppRoutes() {
         <Route path="analytics" element={<Analytics />} />
         <Route path="rate-limits" element={<RateLimits />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="csp" element={<CSPViolations />} />
+        <Route path="auth-shield" element={<AuthShield />} />
       </Route>
       <Route path="*" element={<Navigate to="/sentinel/ui" replace />} />
     </Routes>

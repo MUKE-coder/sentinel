@@ -297,6 +297,55 @@ func (as *AuthShield) emitThreat(ip, username, threatType, detail string) {
 	as.pipe.EmitThreat(te)
 }
 
+// AuthShieldStatus is a snapshot of one IP's current AuthShield state,
+// returned by Snapshot for the dashboard.
+type AuthShieldStatus struct {
+	IP              string    `json:"ip"`
+	FailedAttempts  int       `json:"failed_attempts"`
+	Locked          bool      `json:"locked"`
+	LockUntil       time.Time `json:"lock_until,omitempty"`
+	CAPTCHARequired bool      `json:"captcha_required"`
+}
+
+// Snapshot returns the current per-IP AuthShield state — useful for the
+// dashboard panel that visualizes who's in the lockout / CAPTCHA tier
+// without having to chase ThreatEvents.
+func (as *AuthShield) Snapshot() []AuthShieldStatus {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	now := time.Now()
+	captchaThreshold := as.config.CAPTCHAThreshold
+	out := make([]AuthShieldStatus, 0, len(as.ipFails))
+	for ip, t := range as.ipFails {
+		t.attempts = pruneOld(t.attempts, now, as.config.LockoutDuration)
+		if t.locked && now.After(t.lockUntil) {
+			t.locked = false
+		}
+		row := AuthShieldStatus{
+			IP:             ip,
+			FailedAttempts: len(t.attempts),
+			Locked:         t.locked,
+		}
+		if t.locked {
+			row.LockUntil = t.lockUntil
+		}
+		if as.captchaProvider != nil && captchaThreshold > 0 && !t.locked && len(t.attempts) >= captchaThreshold {
+			row.CAPTCHARequired = true
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// CAPTCHAProviderName returns the configured CAPTCHA provider's name, or
+// "" if none. Used by the dashboard to label the AuthShield panel.
+func (as *AuthShield) CAPTCHAProviderName() string {
+	if as.captchaProvider == nil {
+		return ""
+	}
+	return as.captchaProvider.Name()
+}
+
 // GetIPStatus returns the current failure count and lock status for an IP.
 func (as *AuthShield) GetIPStatus(ip string) (attempts int, locked bool) {
 	as.mu.Lock()

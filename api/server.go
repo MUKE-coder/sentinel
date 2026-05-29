@@ -154,6 +154,10 @@ func (s *Server) RegisterRoutes(r *gin.Engine, prefix string) {
 
 		// Auth Shield
 		protected.POST("/auth/unblock-user/:username", s.handleUnblockUser)
+		protected.GET("/auth-shield/status", s.handleAuthShieldStatus)
+
+		// CSP violations
+		protected.GET("/csp-violations/stats", s.handleCSPStats)
 
 		// Compliance Reports
 		protected.GET("/reports/gdpr", s.handleGDPRReport)

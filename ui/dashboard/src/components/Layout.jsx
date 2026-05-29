@@ -5,6 +5,8 @@ const navItems = [
   { to: '/sentinel/ui', label: 'Dashboard', icon: '◉' },
   { to: '/sentinel/ui/threats', label: 'Threats', icon: '⚠' },
   { to: '/sentinel/ui/actors', label: 'Actors', icon: '◎' },
+  { to: '/sentinel/ui/auth-shield', label: 'Auth Shield', icon: '🛡' },
+  { to: '/sentinel/ui/csp', label: 'CSP Violations', icon: '⊟' },
   { to: '/sentinel/ui/ip-management', label: 'IP Mgmt', icon: '⊘' },
   { to: '/sentinel/ui/performance', label: 'Performance', icon: '◈' },
   { to: '/sentinel/ui/users', label: 'Users', icon: '◇' },
