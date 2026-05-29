@@ -165,6 +165,23 @@ type AlertConfig struct {
 	Slack       *SlackConfig
 	Email       *EmailConfig
 	Webhook     *WebhookConfig
+	PagerDuty   *PagerDutyConfig
+}
+
+// PagerDutyConfig configures PagerDuty Events API v2 routing. Use when
+// security findings should page the oncall, not just appear in a dashboard.
+type PagerDutyConfig struct {
+	// IntegrationKey is the PagerDuty Events API v2 routing key (32 hex chars).
+	IntegrationKey string
+
+	// MinSeverity overrides AlertConfig.MinSeverity for PagerDuty specifically.
+	// Empty = inherit. Common pattern: AlertConfig.MinSeverity=High to fill the
+	// dashboard, PagerDuty.MinSeverity=Critical to page only on critical.
+	MinSeverity Severity
+
+	// MinCVSS, if non-zero, filters findings by CVSS score in addition to
+	// severity — e.g. set 9.0 to page only on the worst.
+	MinCVSS float64
 }
 
 // SlackConfig configures Slack webhook alerts.

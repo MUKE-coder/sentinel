@@ -21,6 +21,7 @@ type (
 	SlackConfig        = core.SlackConfig
 	EmailConfig        = core.EmailConfig
 	WebhookConfig      = core.WebhookConfig
+	PagerDutyConfig    = core.PagerDutyConfig
 	AIConfig           = core.AIConfig
 	UserContext        = core.UserContext
 	PerformanceConfig  = core.PerformanceConfig

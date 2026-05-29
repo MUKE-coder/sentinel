@@ -62,6 +62,17 @@ type ThreatEvent struct {
 	Lng           float64   `json:"lng,omitempty"`
 	Resolved      bool      `json:"resolved"`
 	FalsePositive bool      `json:"false_positive"`
+
+	// CVSS is the Common Vulnerability Scoring System score (0.0–10.0)
+	// assigned to the event, intended for downstream alert routing and
+	// SOC tooling that needs prioritized severity. Set automatically from
+	// the threat type via DefaultCVSSForType — overridable by detectors.
+	CVSS float64 `json:"cvss,omitempty"`
+
+	// CVSSVector is the canonical CVSS:3.1 vector string (e.g.
+	// "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N") describing how the
+	// score was derived. Useful for SOC2 evidence and security spreadsheets.
+	CVSSVector string `json:"cvss_vector,omitempty"`
 }
 
 // ThreatActor represents a persistent profile of an attacker.

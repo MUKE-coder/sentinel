@@ -147,6 +147,7 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 			queryParams = queryParams[:500]
 		}
 
+		cvss := sentinel.DefaultCVSSForTypes(threatTypes)
 		threatEvent := &sentinel.ThreatEvent{
 			ID:          uuid.New().String(),
 			Timestamp:   time.Now(),
@@ -162,6 +163,8 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 			Severity:    severity,
 			Confidence:  confidence,
 			Evidence:    evidence,
+			CVSS:        cvss.Score,
+			CVSSVector:  cvss.Vector,
 		}
 
 		switch config.Mode {

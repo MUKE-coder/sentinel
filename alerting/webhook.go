@@ -46,6 +46,8 @@ func (w *WebhookProvider) Send(ctx context.Context, te *sentinel.ThreatEvent) er
 		"threat_types": te.ThreatTypes,
 		"severity":     te.Severity,
 		"confidence":   te.Confidence,
+		"cvss":         te.CVSS,
+		"cvss_vector":  te.CVSSVector,
 		"blocked":      te.Blocked,
 		"country":      te.Country,
 		"evidence":     te.Evidence,

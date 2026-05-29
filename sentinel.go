@@ -165,7 +165,7 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 
 	// 5d. Initialize alerting system
 	var alertDispatcher *alerting.Dispatcher
-	if config.Alerts.Slack != nil || config.Alerts.Email != nil || config.Alerts.Webhook != nil {
+	if config.Alerts.Slack != nil || config.Alerts.Email != nil || config.Alerts.Webhook != nil || config.Alerts.PagerDuty != nil {
 		alertDispatcher = alerting.NewDispatcher(config.Alerts)
 		if config.Alerts.Slack != nil && config.Alerts.Slack.WebhookURL != "" {
 			alertDispatcher.AddProvider(alerting.NewSlackProvider(config.Alerts.Slack.WebhookURL))
@@ -175,6 +175,9 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 		}
 		if config.Alerts.Webhook != nil && config.Alerts.Webhook.URL != "" {
 			alertDispatcher.AddProvider(alerting.NewWebhookProvider(*config.Alerts.Webhook))
+		}
+		if config.Alerts.PagerDuty != nil && config.Alerts.PagerDuty.IntegrationKey != "" {
+			alertDispatcher.AddProvider(alerting.NewPagerDutyProvider(*config.Alerts.PagerDuty))
 		}
 		pipe.AddHandler(alertDispatcher)
 	}
