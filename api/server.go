@@ -464,6 +464,10 @@ func (s *Server) handlePerformanceOverview(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "INTERNAL_ERROR"})
 		return
 	}
+	if s.pipe != nil && overview != nil {
+		overview.PipelineEmitted = s.pipe.EmittedCount()
+		overview.PipelineDropped = s.pipe.DroppedCount()
+	}
 	c.JSON(http.StatusOK, gin.H{"data": overview})
 }
 

@@ -14,6 +14,8 @@ package sentinel
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"strings"
@@ -24,6 +26,7 @@ import (
 	"github.com/MUKE-coder/sentinel/api"
 	"github.com/MUKE-coder/sentinel/core"
 	"github.com/MUKE-coder/sentinel/detection"
+	sentinelgorm "github.com/MUKE-coder/sentinel/gorm"
 	"github.com/MUKE-coder/sentinel/intelligence"
 	"github.com/MUKE-coder/sentinel/middleware"
 	"github.com/MUKE-coder/sentinel/pipeline"
@@ -35,6 +38,11 @@ import (
 	"gorm.io/gorm"
 )
 
+// ErrInsecureDefaults is returned by MountE when the application would start
+// in gin.ReleaseMode with the built-in default password or JWT secret and
+// DashboardConfig.AllowInsecureDefaults is false.
+var ErrInsecureDefaults = errors.New("sentinel: refusing to start in release mode with default dashboard credentials")
+
 // Mount attaches Sentinel to a Gin router, enabling security middleware, the REST API,
 // WebSocket streams, and the embedded dashboard UI.
 //
@@ -45,8 +53,17 @@ import (
 //
 // Mount will initialize the storage backend, run migrations, start background goroutines
 // (event pipeline, score recomputation, cleanup), and register all middleware and routes.
-// Any initialization error will cause a fatal log.
+// Any initialization error is fatal — use MountE if you want to handle errors yourself.
 func Mount(router *gin.Engine, db *gorm.DB, config Config) {
+	if err := MountE(router, db, config); err != nil {
+		log.Fatalf("[sentinel] %v", err)
+	}
+}
+
+// MountE is the error-returning variant of Mount. Library callers that don't
+// want a sub-system failure to kill the host process should prefer this and
+// handle the returned error themselves (log + skip Sentinel, retry, etc.).
+func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	config.ApplyDefaults()
 
 	// Refuse to start with built-in default credentials in release mode unless
@@ -54,10 +71,10 @@ func Mount(router *gin.Engine, db *gorm.DB, config Config) {
 	// from shipping with forgeable admin tokens and a known password.
 	if gin.Mode() == gin.ReleaseMode && !config.Dashboard.AllowInsecureDefaults {
 		if config.Dashboard.Password == core.DefaultInsecurePassword {
-			log.Fatalf("[sentinel] refusing to start in release mode with default dashboard password. Set Dashboard.Password or Dashboard.AllowInsecureDefaults=true.")
+			return fmt.Errorf("%w: default dashboard password — set Dashboard.Password or AllowInsecureDefaults", ErrInsecureDefaults)
 		}
 		if config.Dashboard.SecretKey == core.DefaultInsecureSecretKey {
-			log.Fatalf("[sentinel] refusing to start in release mode with default JWT secret. Set Dashboard.SecretKey or Dashboard.AllowInsecureDefaults=true.")
+			return fmt.Errorf("%w: default JWT secret — set Dashboard.SecretKey or AllowInsecureDefaults", ErrInsecureDefaults)
 		}
 	}
 
@@ -73,7 +90,7 @@ func Mount(router *gin.Engine, db *gorm.DB, config Config) {
 	case SQLite:
 		store, err = sqlite.New(config.Storage.DSN)
 		if err != nil {
-			log.Fatalf("[sentinel] Failed to initialize SQLite storage: %v", err)
+			return fmt.Errorf("initialize SQLite storage: %w", err)
 		}
 	case Memory:
 		store = memory.New()
@@ -84,7 +101,7 @@ func Mount(router *gin.Engine, db *gorm.DB, config Config) {
 	// 2. Run migrations
 	ctx := context.Background()
 	if err := store.Migrate(ctx); err != nil {
-		log.Fatalf("[sentinel] Failed to run migrations: %v", err)
+		return fmt.Errorf("run migrations: %w", err)
 	}
 
 	// 3. Initialize IP manager
@@ -259,7 +276,16 @@ func Mount(router *gin.Engine, db *gorm.DB, config Config) {
 		config.Storage.Driver,
 	)
 
-	_ = db // GORM plugin is separate — users register it manually via db.Use(sentinelgorm.New(pipe))
+	// 13. Auto-register the GORM plugin when a *gorm.DB is supplied.
+	// Previously the db parameter was unused — callers had to wire the plugin
+	// themselves. That defeats the one-line setup promise of Mount.
+	if db != nil {
+		if err := db.Use(sentinelgorm.New(pipe)); err != nil {
+			return fmt.Errorf("register GORM plugin: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func backgroundCleanup(store storage.Store, retentionDays int) {

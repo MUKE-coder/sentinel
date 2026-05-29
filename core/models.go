@@ -173,6 +173,15 @@ type PerformanceOverview struct {
 	MemoryUsageMB    float64   `json:"memory_usage_mb"`
 	DBQueryAvg       float64   `json:"db_query_avg_ms"`
 	ComputedAt       time.Time `json:"computed_at"`
+
+	// PipelineEmitted is the total number of events successfully accepted
+	// by the async event pipeline since startup.
+	PipelineEmitted int64 `json:"pipeline_emitted"`
+
+	// PipelineDropped is the total number of events the pipeline had to
+	// drop because the buffer was full. A non-zero rate during an attack
+	// means observability is degraded — alert on it.
+	PipelineDropped int64 `json:"pipeline_dropped"`
 }
 
 // RouteMetric contains performance metrics for a specific route.

@@ -120,6 +120,18 @@ func (p *Pipeline) EmitAudit(payload interface{}) {
 	})
 }
 
+// DroppedCount returns the total number of events dropped due to a full
+// buffer. Useful as an alerting signal — drops happen exactly when an
+// attack is overwhelming the pipeline.
+func (p *Pipeline) DroppedCount() int64 {
+	return p.dropped.Load()
+}
+
+// EmittedCount returns the total number of events successfully emitted.
+func (p *Pipeline) EmittedCount() int64 {
+	return p.emitted.Load()
+}
+
 // Stats returns pipeline statistics.
 func (p *Pipeline) Stats() PipelineStats {
 	return PipelineStats{
