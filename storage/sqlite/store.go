@@ -48,6 +48,16 @@ func New(dsn string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// NewFromGormDB wraps an already-opened *gorm.DB into a Store. Exposed so
+// other adapter packages (notably storage/postgres) can reuse this entire
+// implementation: the GORM models defined here are dialect-agnostic, so
+// the only difference between SQLite and Postgres is the driver passed
+// to gorm.Open. Keeping the codepath shared means migrations, queries,
+// and tests cover both backends.
+func NewFromGormDB(db *gorm.DB) *Store {
+	return &Store{db: db}
+}
+
 // --- GORM models ---
 
 type threatEventRow struct {

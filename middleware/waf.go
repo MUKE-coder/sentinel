@@ -30,13 +30,11 @@ func ActorIDFromIP(ip string) string {
 }
 
 // WAFMiddleware creates a Gin middleware that inspects requests for threats
-// and handles them according to the configured WAF mode.
-// An optional CustomRuleEngine can be passed to also check custom rules.
-func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipeline.Pipeline, customEngine ...*detection.CustomRuleEngine) gin.HandlerFunc {
-	var customRuleEngine *detection.CustomRuleEngine
-	if len(customEngine) > 0 {
-		customRuleEngine = customEngine[0]
-	}
+// and handles them according to the configured WAF mode. customEngine may be
+// nil; pass a configured *detection.CustomRuleEngine to also evaluate custom
+// rules alongside the built-in pattern set.
+func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipeline.Pipeline, customEngine *detection.CustomRuleEngine) gin.HandlerFunc {
+	customRuleEngine := customEngine
 	excludeRouteSet := make(map[string]bool)
 	for _, r := range config.ExcludeRoutes {
 		excludeRouteSet[r] = true

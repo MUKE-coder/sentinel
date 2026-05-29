@@ -32,6 +32,7 @@ import (
 	"github.com/MUKE-coder/sentinel/pipeline"
 	"github.com/MUKE-coder/sentinel/storage"
 	"github.com/MUKE-coder/sentinel/storage/memory"
+	"github.com/MUKE-coder/sentinel/storage/postgres"
 	"github.com/MUKE-coder/sentinel/storage/sqlite"
 	"github.com/MUKE-coder/sentinel/ui"
 	"github.com/gin-gonic/gin"
@@ -91,6 +92,14 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 		store, err = sqlite.New(config.Storage.DSN)
 		if err != nil {
 			return fmt.Errorf("initialize SQLite storage: %w", err)
+		}
+	case Postgres:
+		store, err = postgres.New(config.Storage.DSN, postgres.Options{
+			MaxOpenConns: config.Storage.MaxOpenConns,
+			MaxIdleConns: config.Storage.MaxIdleConns,
+		})
+		if err != nil {
+			return fmt.Errorf("initialize Postgres storage: %w", err)
 		}
 	case Memory:
 		store = memory.New()

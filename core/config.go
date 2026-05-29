@@ -193,6 +193,11 @@ type AIConfig struct {
 	APIKey       string
 	Model        string
 	DailySummary bool
+
+	// MaxCallsPerDay caps the total number of upstream LLM calls per UTC day
+	// across all AI features (threat analysis, NL queries, summaries, etc).
+	// 0 disables the cap. Default applied in ApplyDefaults: 500.
+	MaxCallsPerDay int64
 }
 
 // UserContext represents an authenticated user extracted from a request.
@@ -314,6 +319,10 @@ func (c *Config) ApplyDefaults() {
 
 	if c.Alerts.MinSeverity == "" {
 		c.Alerts.MinSeverity = SeverityHigh
+	}
+
+	if c.AI != nil && c.AI.MaxCallsPerDay == 0 {
+		c.AI.MaxCallsPerDay = 500
 	}
 
 	if c.Performance.Enabled == nil {

@@ -23,7 +23,7 @@ func setupWAFRouter(mode sentinel.WAFMode, store *memory.Store, pipe *pipeline.P
 	r.Use(WAFMiddleware(sentinel.WAFConfig{
 		Enabled: true,
 		Mode:    mode,
-	}, store, pipe))
+	}, store, pipe, nil))
 	r.GET("/api/products", func(c *gin.Context) {
 		c.JSON(200, gin.H{"products": []string{"a", "b", "c"}})
 	})
@@ -185,7 +185,7 @@ func TestWAFExcludedRoute(t *testing.T) {
 		Enabled:       true,
 		Mode:          sentinel.ModeBlock,
 		ExcludeRoutes: []string{"/health"},
-	}, store, pipe))
+	}, store, pipe, nil))
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
@@ -211,7 +211,7 @@ func TestWAFDisabled(t *testing.T) {
 	r.Use(WAFMiddleware(sentinel.WAFConfig{
 		Enabled: false,
 		Mode:    sentinel.ModeBlock,
-	}, store, pipe))
+	}, store, pipe, nil))
 	r.GET("/api/products", func(c *gin.Context) {
 		c.JSON(200, gin.H{"products": []string{"a"}})
 	})

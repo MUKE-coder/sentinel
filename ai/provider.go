@@ -220,5 +220,10 @@ func NewProvider(config *sentinel.AIConfig) Provider {
 		return nil
 	}
 
-	return NewCachedProvider(provider, 1*time.Hour)
+	// Apply cache first, budget on the outside so cached hits don't burn budget.
+	wrapped := Provider(NewCachedProvider(provider, 1*time.Hour))
+	if config.MaxCallsPerDay > 0 {
+		wrapped = NewBudgetedProvider(wrapped, config.MaxCallsPerDay)
+	}
+	return wrapped
 }
