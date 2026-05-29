@@ -24,6 +24,7 @@ import (
 	"github.com/MUKE-coder/sentinel/ai"
 	"github.com/MUKE-coder/sentinel/alerting"
 	"github.com/MUKE-coder/sentinel/api"
+	"github.com/MUKE-coder/sentinel/captcha"
 	"github.com/MUKE-coder/sentinel/core"
 	"github.com/MUKE-coder/sentinel/detection"
 	sentinelgorm "github.com/MUKE-coder/sentinel/gorm"
@@ -182,10 +183,13 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 		pipe.AddHandler(alertDispatcher)
 	}
 
-	// 5e. Initialize auth shield
+	// 5e. Initialize auth shield (with optional CAPTCHA tier)
 	var authShield *middleware.AuthShield
 	if config.AuthShield.Enabled {
 		authShield = middleware.NewAuthShield(config.AuthShield, store, pipe)
+		if cp := buildCAPTCHAProvider(config); cp != nil {
+			authShield.SetCAPTCHAProvider(cp)
+		}
 		router.Use(authShield.Middleware())
 	}
 
@@ -297,6 +301,23 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 		}
 	}
 
+	return nil
+}
+
+// buildCAPTCHAProvider picks the first configured CAPTCHA provider, with a
+// precedence order biased toward commercial providers (more battle-tested
+// against bots) over the self-hosted fallback.
+func buildCAPTCHAProvider(config Config) captcha.Provider {
+	switch {
+	case config.CAPTCHA.HCaptchaSecret != "":
+		return captcha.NewHCaptchaProvider(config.CAPTCHA.HCaptchaSecret)
+	case config.CAPTCHA.TurnstileSecret != "":
+		return captcha.NewTurnstileProvider(config.CAPTCHA.TurnstileSecret)
+	case config.CAPTCHA.RecaptchaSecret != "":
+		return captcha.NewRecaptchaProvider(config.CAPTCHA.RecaptchaSecret)
+	case config.CAPTCHA.SelfHostedSecret != "":
+		return captcha.NewSelfHostedProvider(config.CAPTCHA.SelfHostedSecret)
+	}
 	return nil
 }
 

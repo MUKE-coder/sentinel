@@ -22,6 +22,18 @@ type Config struct {
 	AI          *AIConfig
 	UserExtractor func(c *gin.Context) *UserContext
 	Performance PerformanceConfig
+	CAPTCHA     CAPTCHAConfig
+}
+
+// CAPTCHAConfig configures the CAPTCHA tier used by AuthShield. Pick exactly
+// one provider — set the matching SecretKey to enable. SelfHostedSecret
+// activates the built-in arithmetic challenge for projects that don't want
+// a third-party CAPTCHA.
+type CAPTCHAConfig struct {
+	HCaptchaSecret   string
+	TurnstileSecret  string
+	RecaptchaSecret  string
+	SelfHostedSecret string
 }
 
 // DashboardConfig configures the embedded security dashboard.
@@ -124,6 +136,18 @@ type AuthShieldConfig struct {
 	LockoutDuration            time.Duration
 	CredentialStuffingDetection bool
 	BruteForceDetection        bool
+
+	// CAPTCHAThreshold is the failure count after which a CAPTCHA token is
+	// required on the next login attempt — the suspicious-but-not-locked
+	// middle tier. Must be lower than MaxFailedAttempts. Default in
+	// ApplyDefaults: MaxFailedAttempts / 2 (rounded down, minimum 2).
+	// Set to 0 to disable the CAPTCHA tier.
+	CAPTCHAThreshold int
+
+	// CAPTCHATokenField is the form / JSON field name the middleware reads
+	// the CAPTCHA token from. Header "X-Captcha-Token" is always also
+	// accepted. Default: "captcha_token".
+	CAPTCHATokenField string
 }
 
 // HeaderConfig configures security header injection.
@@ -305,6 +329,15 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.AuthShield.LockoutDuration == 0 {
 		c.AuthShield.LockoutDuration = 15 * time.Minute
+	}
+	if c.AuthShield.CAPTCHAThreshold == 0 && c.AuthShield.MaxFailedAttempts >= 4 {
+		c.AuthShield.CAPTCHAThreshold = c.AuthShield.MaxFailedAttempts / 2
+		if c.AuthShield.CAPTCHAThreshold < 2 {
+			c.AuthShield.CAPTCHAThreshold = 2
+		}
+	}
+	if c.AuthShield.CAPTCHATokenField == "" {
+		c.AuthShield.CAPTCHATokenField = "captcha_token"
 	}
 
 	if c.Headers.Enabled == nil {

@@ -25,4 +25,5 @@ type (
 	AIConfig           = core.AIConfig
 	UserContext        = core.UserContext
 	PerformanceConfig  = core.PerformanceConfig
+	CAPTCHAConfig      = core.CAPTCHAConfig
 )

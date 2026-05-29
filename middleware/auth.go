@@ -1,10 +1,14 @@
 package middleware
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/MUKE-coder/sentinel/captcha"
 	sentinel "github.com/MUKE-coder/sentinel/core"
 	"github.com/MUKE-coder/sentinel/pipeline"
 	"github.com/MUKE-coder/sentinel/storage"
@@ -13,15 +17,17 @@ import (
 )
 
 // AuthShield tracks failed login attempts per IP and per username,
-// and enforces lockouts and credential stuffing detection.
+// and enforces lockouts, credential stuffing detection, and the CAPTCHA
+// challenge tier between "fine" and "locked out".
 type AuthShield struct {
-	config    sentinel.AuthShieldConfig
-	store     storage.Store
-	pipe      *pipeline.Pipeline
-	mu        sync.Mutex
-	ipFails   map[string]*failTracker
-	userFails map[string]*failTracker
-	ipUsers   map[string]*stuffingTracker // credential stuffing detection
+	config         sentinel.AuthShieldConfig
+	store          storage.Store
+	pipe           *pipeline.Pipeline
+	mu             sync.Mutex
+	ipFails        map[string]*failTracker
+	userFails      map[string]*failTracker
+	ipUsers        map[string]*stuffingTracker // credential stuffing detection
+	captchaProvider captcha.Provider
 }
 
 type failTracker struct {
@@ -46,6 +52,30 @@ func NewAuthShield(config sentinel.AuthShieldConfig, store storage.Store, pipe *
 		ipUsers:   make(map[string]*stuffingTracker),
 	}
 	return as
+}
+
+// SetCAPTCHAProvider installs a CAPTCHA provider used for the
+// suspicious-but-not-locked tier. When set, AuthShield requires a valid
+// CAPTCHA token on login attempts from an IP that has crossed
+// CAPTCHAThreshold failures but not yet MaxFailedAttempts.
+func (as *AuthShield) SetCAPTCHAProvider(p captcha.Provider) {
+	as.captchaProvider = p
+}
+
+// captchaRequired returns true if the given IP is currently in the CAPTCHA
+// tier — past the soft threshold but not yet locked out.
+func (as *AuthShield) captchaRequired(ip string) bool {
+	if as.captchaProvider == nil || as.config.CAPTCHAThreshold <= 0 {
+		return false
+	}
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	t := as.ipFails[ip]
+	if t == nil || t.locked {
+		return false
+	}
+	t.attempts = pruneOld(t.attempts, time.Now(), as.config.LockoutDuration)
+	return len(t.attempts) >= as.config.CAPTCHAThreshold
 }
 
 // Middleware returns a Gin middleware that wraps the configured login route.
@@ -79,6 +109,30 @@ func (as *AuthShield) Middleware() gin.HandlerFunc {
 				"code":  "AUTH_SHIELD_LOCKED",
 			})
 			return
+		}
+
+		// CAPTCHA tier — past the soft threshold but not yet locked. Real
+		// users solve it in seconds; credential-stuffing bots typically can't.
+		if as.captchaRequired(clientIP) {
+			token := extractCAPTCHAToken(c, as.config.CAPTCHATokenField)
+			if token == "" {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+					"error":            "CAPTCHA required",
+					"code":             "AUTH_SHIELD_CAPTCHA_REQUIRED",
+					"captcha_provider": as.captchaProvider.Name(),
+				})
+				return
+			}
+			if err := as.captchaProvider.Verify(c.Request.Context(), token, clientIP); err != nil {
+				as.recordFailure(clientIP, c.GetString("sentinel_username"))
+				as.emitThreat(clientIP, "", "BruteForce", "CAPTCHA verification failed")
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+					"error":            "CAPTCHA verification failed",
+					"code":             "AUTH_SHIELD_CAPTCHA_INVALID",
+					"captcha_provider": as.captchaProvider.Name(),
+				})
+				return
+			}
 		}
 
 		// Use a response writer wrapper to capture status code
@@ -279,4 +333,39 @@ type authResponseWriter struct {
 func (w *authResponseWriter) WriteHeader(code int) {
 	w.statusCode = code
 	w.ResponseWriter.WriteHeader(code)
+}
+
+// extractCAPTCHAToken pulls the CAPTCHA token from the request. Checks
+// (in order): the X-Captcha-Token header, the named form field, and the
+// named field inside a JSON body. The body is consumed and restored so
+// downstream handlers still see it.
+func extractCAPTCHAToken(c *gin.Context, fieldName string) string {
+	if v := c.GetHeader("X-Captcha-Token"); v != "" {
+		return v
+	}
+	if fieldName == "" {
+		fieldName = "captcha_token"
+	}
+	if v := c.PostForm(fieldName); v != "" {
+		return v
+	}
+	if c.Request.Body == nil {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 64*1024))
+	if err != nil {
+		return ""
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	if len(body) == 0 {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+	if v, ok := payload[fieldName].(string); ok {
+		return v
+	}
+	return ""
 }
