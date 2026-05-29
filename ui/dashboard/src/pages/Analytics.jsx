@@ -73,9 +73,6 @@ export default function Analytics() {
     threats: Math.floor(Math.random() * (stats?.total_threats || 10) / 24),
   }));
 
-  // Score trend (single point for now)
-  const scoreTrend = score ? [{ label: 'Current', score: score.overall }] : [];
-
   const customTooltipStyle = {
     backgroundColor: '#0d1526',
     border: '1px solid #1e2d4a',

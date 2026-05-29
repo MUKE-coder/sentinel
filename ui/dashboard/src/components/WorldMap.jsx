@@ -10,13 +10,6 @@ function project(lat, lng, width, height) {
   return { x, y: Math.max(0, Math.min(height, y)) };
 }
 
-const severityColor = {
-  Critical: '#ff2d55',
-  High: '#ff6b35',
-  Medium: '#ffb020',
-  Low: '#00d4ff',
-};
-
 export default function WorldMap() {
   const { apiFetch } = useAPI();
   const [geoData, setGeoData] = useState([]);

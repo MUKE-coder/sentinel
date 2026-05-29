@@ -3,6 +3,7 @@ package intelligence_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -136,12 +137,19 @@ func TestAnomalyDetector_AcceptanceCriteria_OffHours(t *testing.T) {
 	// Build a weekday 9-5 baseline
 	buildWeekdayBaseline(t, store, "user-offhours")
 
-	// Track emitted threats
-	var emittedThreats []*sentinel.ThreatEvent
+	// Track emitted threats — guarded by a mutex because the pipeline worker
+	// runs the handler in its own goroutine and we read the slice from the
+	// test goroutine after time.Sleep.
+	var (
+		emittedMu      sync.Mutex
+		emittedThreats []*sentinel.ThreatEvent
+	)
 	pipe.AddHandler(pipeline.HandlerFunc(func(ctx context.Context, event pipeline.Event) error {
 		if event.Type == pipeline.EventThreat {
 			if te, ok := event.Payload.(*sentinel.ThreatEvent); ok {
+				emittedMu.Lock()
 				emittedThreats = append(emittedThreats, te)
+				emittedMu.Unlock()
 			}
 		}
 		return nil
@@ -177,7 +185,10 @@ func TestAnomalyDetector_AcceptanceCriteria_OffHours(t *testing.T) {
 
 	// The 3am access should trigger OffHoursAccess because 3am has < 1% of baseline activity
 	// With sensitivity=medium, threshold=30, and OffHours score=30, it should trigger
-	if len(emittedThreats) == 0 {
+	emittedMu.Lock()
+	emittedCount := len(emittedThreats)
+	emittedMu.Unlock()
+	if emittedCount == 0 {
 		t.Log("Note: OffHoursAccess anomaly detection depends on having enough baseline data")
 		// This is acceptable — if the baseline doesn't have enough weekday data
 		// the detection may not trigger. The important thing is no error occurred.

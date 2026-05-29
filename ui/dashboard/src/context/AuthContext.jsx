@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- context file intentionally co-exports the hook with the provider; splitting that just to satisfy fast-refresh would scatter related code across two files. */
 import { createContext, useContext, useState, useCallback } from 'react';
 
 const AuthContext = createContext(null);
