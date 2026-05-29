@@ -65,6 +65,13 @@ var defaultCVSS = map[ThreatType]CVSS{
 		Score:  3.1,
 		Vector: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
 	},
+	ThreatCSPViolation: {
+		// Low by default — most CSP reports are extensions or harmless
+		// inline scripts. Aggregate volume is the real signal; escalate
+		// downstream if needed.
+		Score:  3.1,
+		Vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N",
+	},
 }
 
 // DefaultCVSSForType returns the default CVSS score + vector for a given

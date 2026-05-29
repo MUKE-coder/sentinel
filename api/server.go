@@ -90,6 +90,11 @@ func (s *Server) SetRateLimiter(rl *middleware.RateLimiter) {
 
 // RegisterRoutes registers all API routes on the Gin router.
 func (s *Server) RegisterRoutes(r *gin.Engine, prefix string) {
+	// CSP violation receiver. Mounted at <prefix>/csp-report (NOT under /api)
+	// so the path matches what browsers post to and so it doesn't require
+	// the dashboard JWT — browsers don't carry it.
+	s.registerCSPReport(r, prefix)
+
 	api := r.Group(prefix + "/api")
 
 	// Auth routes (no JWT required)

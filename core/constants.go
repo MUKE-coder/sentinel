@@ -129,4 +129,5 @@ const (
 	ThreatBruteForce         ThreatType = "BruteForce"
 	ThreatAnomalyDetected    ThreatType = "AnomalyDetected"
 	ThreatScanning           ThreatType = "Scanning"
+	ThreatCSPViolation       ThreatType = "CSPViolation"
 )
