@@ -3,8 +3,8 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
-[![Release](https://img.shields.io/github/v/release/MUKE-coder/sentinel?color=00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
-[![Tests](https://img.shields.io/badge/Tests-12%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
+[![Release](https://img.shields.io/badge/Release-v2.0.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Tests](https://img.shields.io/badge/Tests-17%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
 [![Dashboard Pages](https://img.shields.io/badge/Dashboard-13%20pages-purple)](https://github.com/MUKE-coder/sentinel)
 [![API Endpoints](https://img.shields.io/badge/API-40%2B%20endpoints-yellow)](https://github.com/MUKE-coder/sentinel)
@@ -19,6 +19,24 @@ sentinel.Mount(r, nil, sentinel.Config{})
 r.Run(":8080")
 // Dashboard → http://localhost:8080/sentinel/ui
 ```
+
+## What's new in v2.0.0
+
+- **`MountE` returns an error** — library failures no longer kill the host process.
+- **Default credentials refuse in `gin.ReleaseMode`** — opt in via `Dashboard.AllowInsecureDefaults` for dev.
+- **`WAFConfig.TrustedProxies`** — XFF / X-Real-IP only honored from listed CIDRs; spoofing closed.
+- **`WAFConfig.MaxBodyBytes` + `RejectOversizedBody`** — closes the inspect-10KB-but-pass-the-rest body bypass.
+- **CVSS on every `ThreatEvent`** + canonical CVSS:3.1 vector — automatic per threat type.
+- **PagerDuty sink** with `MinSeverity` + `MinCVSS` filters.
+- **`sentinel.HTTPClient()`** — SSRF-hardened, DNS-rebind safe, IMDS-aware, denies cloud-metadata hosts.
+- **`POST /sentinel/csp-report`** + `CSPMiddleware` — CSP violations flow through the existing dashboard.
+- **CAPTCHA tier on AuthShield** — hCaptcha, Turnstile, reCAPTCHA, self-hosted.
+- **Real Postgres adapter** — previously a stub that silently fell through to in-memory storage.
+- **Pipeline drop visibility** on `GET /sentinel/api/performance/overview` — see when an attack overwhelms the buffer.
+- **AI daily call cap** (`AIConfig.MaxCallsPerDay`, default 500) so a runaway query loop can't burn budget.
+- **GORM plugin auto-wired** — pass a non-nil `*gorm.DB` to `Mount` and audit logging just works.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list and migration guide.
 
 ## Features
 
