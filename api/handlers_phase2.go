@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/MUKE-coder/sentinel/ai"
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	"github.com/MUKE-coder/sentinel/v2/ai"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 	"github.com/gin-gonic/gin"
 )
 

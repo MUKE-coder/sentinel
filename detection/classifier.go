@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strings"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // ThreatMatch represents a single pattern match during classification.

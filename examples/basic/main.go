@@ -6,7 +6,7 @@ package main
 import (
 	"log"
 
-	sentinel "github.com/MUKE-coder/sentinel"
+	sentinel "github.com/MUKE-coder/sentinel/v2"
 	"github.com/gin-gonic/gin"
 )
 

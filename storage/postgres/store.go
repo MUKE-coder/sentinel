@@ -9,7 +9,7 @@ package postgres
 import (
 	"fmt"
 
-	"github.com/MUKE-coder/sentinel/storage/sqlite"
+	"github.com/MUKE-coder/sentinel/v2/storage/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

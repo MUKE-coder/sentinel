@@ -108,7 +108,7 @@ export default function Home() {
           },
           {
             question: 'How do I install Sentinel?',
-            answer: 'Install Sentinel by running "go get github.com/MUKE-coder/sentinel". It requires Go 1.24 or later and uses pure-Go SQLite, so no CGo or C compiler is needed. It works on Linux, macOS, and Windows without any native dependencies.',
+            answer: 'Install Sentinel by running "go get github.com/MUKE-coder/sentinel/v2". It requires Go 1.24 or later and uses pure-Go SQLite, so no CGo or C compiler is needed. It works on Linux, macOS, and Windows without any native dependencies.',
           },
           {
             question: 'Does Sentinel require any configuration?',
@@ -128,7 +128,7 @@ export default function Home() {
         name="How to Add Security to a Go/Gin Application with Sentinel"
         description="Install and configure Sentinel to add WAF, rate limiting, threat detection, and a security dashboard to your Go application."
         steps={[
-          { name: 'Install Sentinel', text: 'Run "go get github.com/MUKE-coder/sentinel" to add the package to your Go module.' },
+          { name: 'Install Sentinel', text: 'Run "go get github.com/MUKE-coder/sentinel/v2" to add the package to your Go module.' },
           { name: 'Import and Mount', text: 'Import the sentinel package and call sentinel.Mount(router, nil, sentinel.Config{}) on your Gin engine before defining routes.' },
           { name: 'Enable Features', text: 'Configure WAF, rate limiting, auth shield, and other features by setting fields in sentinel.Config. All features are opt-in with sensible defaults.' },
           { name: 'Access the Dashboard', text: 'Start your application and visit /sentinel/ui to access the embedded React security dashboard with real-time monitoring.' },
@@ -262,7 +262,7 @@ export default function Home() {
           </p>
           <div className="inline-flex items-center gap-3 px-6 py-3 rounded-xl bg-gray-100 dark:bg-gray-800 font-mono text-sm mb-8">
             <Terminal size={16} className="text-gray-400" />
-            <span>go get github.com/MUKE-coder/sentinel</span>
+            <span>go get github.com/MUKE-coder/sentinel/v2</span>
           </div>
           <div className="flex items-center justify-center gap-4">
             <Link

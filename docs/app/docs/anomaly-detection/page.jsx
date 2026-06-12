@@ -90,7 +90,7 @@ export default function AnomalyDetection() {
 import (
     "time"
 
-    sentinel "github.com/MUKE-coder/sentinel"
+    sentinel "github.com/MUKE-coder/sentinel/v2"
     "github.com/gin-gonic/gin"
 )
 
@@ -546,7 +546,7 @@ LearningPeriod: 30 * 24 * time.Hour, // 30 days`}
 import (
     "time"
 
-    sentinel "github.com/MUKE-coder/sentinel"
+    sentinel "github.com/MUKE-coder/sentinel/v2"
     "github.com/gin-gonic/gin"
 )
 

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/storage"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/storage"
 	gsqlite "github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

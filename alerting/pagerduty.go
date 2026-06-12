@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // PagerDutyAPI is the Events API v2 endpoint. Overridable for tests.

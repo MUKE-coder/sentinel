@@ -1,6 +1,6 @@
 package sentinel
 
-import "github.com/MUKE-coder/sentinel/core"
+import "github.com/MUKE-coder/sentinel/v2/core"
 
 // Type aliases — re-export all types from core so users can use sentinel.X directly.
 type (

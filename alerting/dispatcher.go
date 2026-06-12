@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/pipeline"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/pipeline"
 )
 
 // AlertProvider sends alerts to a specific channel.

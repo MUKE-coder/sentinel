@@ -838,7 +838,7 @@ sentinel.Mount(r, nil, sentinel.Config{
 import (
     "os"
 
-    sentinel "github.com/MUKE-coder/sentinel"
+    sentinel "github.com/MUKE-coder/sentinel/v2"
     "github.com/gin-gonic/gin"
 )
 

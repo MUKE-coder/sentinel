@@ -7,9 +7,9 @@ import (
 	"log"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel"
-	sentinelgorm "github.com/MUKE-coder/sentinel/gorm"
-	"github.com/MUKE-coder/sentinel/pipeline"
+	sentinel "github.com/MUKE-coder/sentinel/v2"
+	sentinelgorm "github.com/MUKE-coder/sentinel/v2/gorm"
+	"github.com/MUKE-coder/sentinel/v2/pipeline"
 	"github.com/glebarez/sqlite"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"

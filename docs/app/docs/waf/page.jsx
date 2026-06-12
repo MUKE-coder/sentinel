@@ -87,7 +87,7 @@ export default function WAF() {
         code={`package main
 
 import (
-    sentinel "github.com/MUKE-coder/sentinel"
+    sentinel "github.com/MUKE-coder/sentinel/v2"
     "github.com/gin-gonic/gin"
 )
 

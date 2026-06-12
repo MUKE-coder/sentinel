@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // ThreatStore handles persistence and retrieval of threat events.

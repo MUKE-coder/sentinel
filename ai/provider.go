@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // Provider defines the interface for AI-powered security analysis.

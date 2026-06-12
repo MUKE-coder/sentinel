@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	sentinelgorm "github.com/MUKE-coder/sentinel/gorm"
-	"github.com/MUKE-coder/sentinel/pipeline"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	sentinelgorm "github.com/MUKE-coder/sentinel/v2/gorm"
+	"github.com/MUKE-coder/sentinel/v2/pipeline"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )

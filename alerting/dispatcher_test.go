@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/alerting"
-	"github.com/MUKE-coder/sentinel/pipeline"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/alerting"
+	"github.com/MUKE-coder/sentinel/v2/pipeline"
 )
 
 // mockProvider is a test alert provider that records sent alerts.

@@ -3,7 +3,7 @@ package sentinel
 import (
 	"net/http"
 
-	"github.com/MUKE-coder/sentinel/safefetch"
+	"github.com/MUKE-coder/sentinel/v2/safefetch"
 )
 
 // HTTPClientOptions re-exports safefetch.Options at the package root so

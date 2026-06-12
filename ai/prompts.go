@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // buildThreatAnalysisPrompt creates the prompt for analyzing a specific threat event.

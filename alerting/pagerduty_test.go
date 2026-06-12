@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 func TestPagerDutyProvider_PayloadAndSeverity(t *testing.T) {

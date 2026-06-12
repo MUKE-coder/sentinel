@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/intelligence"
-	"github.com/MUKE-coder/sentinel/storage/memory"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/intelligence"
+	"github.com/MUKE-coder/sentinel/v2/storage/memory"
 )
 
 func TestReputationChecker_NoAPIKey(t *testing.T) {

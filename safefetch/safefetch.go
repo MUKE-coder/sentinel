@@ -31,7 +31,7 @@ import (
 	"syscall"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // ErrBlocked is returned when a request is refused by the SSRF policy.

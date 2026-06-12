@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/intelligence"
-	"github.com/MUKE-coder/sentinel/storage/memory"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/intelligence"
+	"github.com/MUKE-coder/sentinel/v2/storage/memory"
 )
 
 func TestProfiler_ProcessThreat_NewActor(t *testing.T) {

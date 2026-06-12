@@ -60,7 +60,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list and migration guide.
 ## Installation
 
 ```bash
-go get github.com/MUKE-coder/sentinel
+go get github.com/MUKE-coder/sentinel/v2
 ```
 
 **Requirements:** Go 1.24+, no CGo required.
@@ -73,7 +73,7 @@ go get github.com/MUKE-coder/sentinel
 package main
 
 import (
-    sentinel "github.com/MUKE-coder/sentinel"
+    sentinel "github.com/MUKE-coder/sentinel/v2"
     "github.com/gin-gonic/gin"
 )
 
@@ -190,8 +190,8 @@ Track database changes automatically:
 
 ```go
 import (
-    sentinelgorm "github.com/MUKE-coder/sentinel/gorm"
-    "github.com/MUKE-coder/sentinel/pipeline"
+    sentinelgorm "github.com/MUKE-coder/sentinel/v2/gorm"
+    "github.com/MUKE-coder/sentinel/v2/pipeline"
 )
 
 // Create a pipeline and register the GORM plugin

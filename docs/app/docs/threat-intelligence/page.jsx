@@ -531,7 +531,7 @@ ipManager.WhitelistIP(ctx, "10.0.0.5")`}
         code={`package main
 
 import (
-    sentinel "github.com/MUKE-coder/sentinel"
+    sentinel "github.com/MUKE-coder/sentinel/v2"
     "github.com/gin-gonic/gin"
 )
 

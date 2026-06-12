@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // ErrBudgetExhausted is returned when the AI provider's call or token budget

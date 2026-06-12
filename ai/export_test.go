@@ -1,7 +1,7 @@
 package ai
 
 import (
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // Exported test helpers for black-box testing.
