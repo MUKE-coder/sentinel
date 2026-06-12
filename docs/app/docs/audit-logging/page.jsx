@@ -59,7 +59,7 @@ export default function AuditLogging() {
       </p>
 
       <Callout type="info" title="Optional Package">
-        The GORM audit logging plugin lives in a separate package (<code>github.com/MUKE-coder/sentinel/gorm</code>).
+        The GORM audit logging plugin lives in a separate package (<code>github.com/MUKE-coder/sentinel/v2/gorm</code>).
         It is completely optional — your core Sentinel middleware works independently. Import it
         only if your application uses GORM and you want automatic database-level audit trails.
       </Callout>
@@ -78,8 +78,8 @@ export default function AuditLogging() {
         language="go"
         filename="go imports"
         code={`import (
-    sentinelgorm "github.com/MUKE-coder/sentinel/gorm"
-    "github.com/MUKE-coder/sentinel/pipeline"
+    sentinelgorm "github.com/MUKE-coder/sentinel/v2/gorm"
+    "github.com/MUKE-coder/sentinel/v2/pipeline"
 )`}
       />
 
@@ -90,8 +90,8 @@ export default function AuditLogging() {
       <CodeBlock
         language="bash"
         showLineNumbers={false}
-        code={`go get github.com/MUKE-coder/sentinel/gorm
-go get github.com/MUKE-coder/sentinel/pipeline`}
+        code={`go get github.com/MUKE-coder/sentinel/v2/gorm
+go get github.com/MUKE-coder/sentinel/v2/pipeline`}
       />
 
       {/* ------------------------------------------------------------------ */}
@@ -466,9 +466,9 @@ type AuditLog struct {
 import (
     "net/http"
 
-    sentinel "github.com/MUKE-coder/sentinel"
-    sentinelgorm "github.com/MUKE-coder/sentinel/gorm"
-    "github.com/MUKE-coder/sentinel/pipeline"
+    sentinel "github.com/MUKE-coder/sentinel/v2"
+    sentinelgorm "github.com/MUKE-coder/sentinel/v2/gorm"
+    "github.com/MUKE-coder/sentinel/v2/pipeline"
     "github.com/gin-gonic/gin"
     "gorm.io/driver/sqlite"
     "gorm.io/gorm"
@@ -759,9 +759,9 @@ import (
     "testing"
     "time"
 
-    sentinel "github.com/MUKE-coder/sentinel/core"
-    sentinelgorm "github.com/MUKE-coder/sentinel/gorm"
-    "github.com/MUKE-coder/sentinel/pipeline"
+    sentinel "github.com/MUKE-coder/sentinel/v2/core"
+    sentinelgorm "github.com/MUKE-coder/sentinel/v2/gorm"
+    "github.com/MUKE-coder/sentinel/v2/pipeline"
     "github.com/glebarez/sqlite"
     "gorm.io/gorm"
 )

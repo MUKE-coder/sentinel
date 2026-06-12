@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // WebhookProvider sends alerts to a generic HTTP webhook.

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // ReputationChecker checks IP reputation via AbuseIPDB and caches results.

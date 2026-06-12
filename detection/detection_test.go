@@ -3,7 +3,7 @@ package detection
 import (
 	"testing"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 func TestSQLiDetection(t *testing.T) {

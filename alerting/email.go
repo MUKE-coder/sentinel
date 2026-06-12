@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // EmailProvider sends alerts via SMTP email.

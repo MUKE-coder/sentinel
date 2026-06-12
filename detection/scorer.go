@@ -1,7 +1,7 @@
 package detection
 
 import (
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // ScoreThreats analyzes a set of threat matches and returns

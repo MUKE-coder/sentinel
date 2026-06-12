@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/intelligence"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/intelligence"
 )
 
 func TestGeoLocator_Disabled(t *testing.T) {

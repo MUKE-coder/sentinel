@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/middleware"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )

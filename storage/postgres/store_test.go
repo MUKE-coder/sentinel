@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/storage/postgres"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/storage/postgres"
 )
 
 // TestPostgresStore_Smoke runs the same minimal interface check the SQLite

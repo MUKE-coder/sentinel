@@ -5,7 +5,7 @@ package detection
 import (
 	"regexp"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // PatternDef defines a compiled detection pattern with metadata.

@@ -7,9 +7,9 @@ import (
 	"log"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/pipeline"
-	"github.com/MUKE-coder/sentinel/storage"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/pipeline"
+	"github.com/MUKE-coder/sentinel/v2/storage"
 )
 
 // Profiler processes threat events and maintains threat actor profiles.

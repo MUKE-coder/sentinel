@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/pipeline"
-	"github.com/MUKE-coder/sentinel/storage/memory"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/pipeline"
+	"github.com/MUKE-coder/sentinel/v2/storage/memory"
 	"github.com/gin-gonic/gin"
 )
 

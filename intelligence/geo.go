@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // GeoLocator provides IP geolocation lookups with an LRU cache.

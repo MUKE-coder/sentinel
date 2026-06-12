@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MUKE-coder/sentinel"
+	"github.com/MUKE-coder/sentinel/v2"
 	"github.com/gin-gonic/gin"
 )
 

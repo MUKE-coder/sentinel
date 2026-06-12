@@ -29,7 +29,7 @@ export default function GettingStarted() {
           },
           {
             q: 'How do I install Sentinel?',
-            a: 'Install Sentinel with go get github.com/MUKE-coder/sentinel. It requires Go 1.24 or later and uses pure-Go SQLite, so no CGo or C compiler is needed. It works out of the box on all platforms including Linux, macOS, and Windows.',
+            a: 'Install Sentinel with go get github.com/MUKE-coder/sentinel/v2. It requires Go 1.24 or later and uses pure-Go SQLite, so no CGo or C compiler is needed. It works out of the box on all platforms including Linux, macOS, and Windows.',
           },
           {
             q: 'Does Sentinel require CGo?',
@@ -65,7 +65,7 @@ export default function GettingStarted() {
       <p>Sentinel requires <strong>Go 1.24+</strong> and uses pure-Go SQLite (no CGo required).</p>
       <CodeBlock
         language="bash"
-        code={`go get github.com/MUKE-coder/sentinel`}
+        code={`go get github.com/MUKE-coder/sentinel/v2`}
         showLineNumbers={false}
       />
 
@@ -80,7 +80,7 @@ export default function GettingStarted() {
         code={`package main
 
 import (
-    sentinel "github.com/MUKE-coder/sentinel"
+    sentinel "github.com/MUKE-coder/sentinel/v2"
     "github.com/gin-gonic/gin"
 )
 
@@ -116,7 +116,7 @@ func main() {
 import (
     "time"
 
-    sentinel "github.com/MUKE-coder/sentinel"
+    sentinel "github.com/MUKE-coder/sentinel/v2"
     "github.com/gin-gonic/gin"
 )
 

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MUKE-coder/sentinel/storage"
+	"github.com/MUKE-coder/sentinel/v2/storage"
 )
 
 // IPManager maintains an in-memory cache of blocked and whitelisted IPs,

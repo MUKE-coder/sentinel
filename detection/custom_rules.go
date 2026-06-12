@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"sync"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // CompiledRule is a custom WAF rule with a compiled regex.

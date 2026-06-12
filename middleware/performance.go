@@ -3,8 +3,8 @@ package middleware
 import (
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/core"
-	"github.com/MUKE-coder/sentinel/pipeline"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/pipeline"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )

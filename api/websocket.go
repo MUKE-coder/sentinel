@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/MUKE-coder/sentinel/pipeline"
+	"github.com/MUKE-coder/sentinel/v2/pipeline"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
