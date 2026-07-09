@@ -2,6 +2,35 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.1.1] - 2026-07-10
+
+Follow-up to v2.1.0 for issue [#10](https://github.com/MUKE-coder/sentinel/issues/10):
+the same class of false positive fixed for SSRF in v2.1.0 survived one regex
+over, in `SQLi_Basic`.
+
+### 🔥 Fix
+
+- **SQLi patterns no longer match opaque tokens or scan headers** (#10).
+  `SQLi_Basic` matched a bare `--` anywhere in the input, and SQLi patterns
+  ran against `Cookie`/`Referer`/`User-Agent`. Base64url is `[A-Za-z0-9-_]`,
+  so a ~400-character cookie holding two JWTs contains `--` with probability
+  ≈ 9% — in `ModeBlock`, roughly one session in ten was 403'd at random, and
+  the verdict changed on every token refresh. Three-part fix:
+  - `--` only matches as a statement terminator (followed by whitespace or
+    end of input), the way `SQLi_Comment` already required.
+  - `0x` + hex must not start mid-word, so hex sequences inside base64 text
+    no longer match.
+  - Every remaining pattern is now explicitly location-scoped: SQLi,
+    command-injection → query + body; path-traversal → path + query + body.
+    XSS keeps header scanning (reflected-Referer XSS is real, and markup
+    doesn't occur naturally in headers) but is now scoped explicitly too —
+    no pattern relies on the implicit "empty means everywhere" default
+    anymore, so a future pattern can't silently inherit scan-everything.
+  - Regression tests pin JWT-bearing cookies, `0x`-hex ids, double-hyphen
+    SEO slugs (in Referer and in query values), and header-borne
+    SQL/shell-shaped prose as clean, plus the real payload shapes
+    (`1' OR 1=1--`, `;-- `, `0x4142...`) as still detected.
+
 ## [2.1.0] - 2026-07-10
 
 Emergency-priority fix release for issues [#7](https://github.com/MUKE-coder/sentinel/issues/7)
