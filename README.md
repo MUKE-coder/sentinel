@@ -3,7 +3,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
-[![Release](https://img.shields.io/badge/Release-v2.0.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Release](https://img.shields.io/badge/Release-v2.1.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
 [![Tests](https://img.shields.io/badge/Tests-17%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
 [![Dashboard Pages](https://img.shields.io/badge/Dashboard-13%20pages-purple)](https://github.com/MUKE-coder/sentinel)
@@ -19,6 +19,18 @@ sentinel.Mount(r, nil, sentinel.Config{})
 r.Run(":8080")
 // Dashboard → http://localhost:8080/sentinel/ui
 ```
+
+## What's new in v2.1.0
+
+**Critical fix — upgrade immediately if you run `WAF.Mode = ModeBlock`.**
+
+- **WAF no longer 403s every Chrome/Edge/Brave user** (#8) — the SSRF pattern matched `0.0.0.0` inside browser version strings like `Chrome/140.0.0.0`. Host patterns are now anchored and scoped to query/body, with regression tests pinning browser User-Agents.
+- **Wildcard route patterns work** (#7) — `WAF.ExcludeRoutes` and `RateLimit.ByRoute` now support `/v1/*`, `/v1/**`, and `/api/apps/*/products`; previously such entries silently matched nothing.
+- **WebSocket endpoints require auth** — the live threat feed no longer accepts tokenless connections.
+- **Dashboard IP blocks default to 24 h** with explicit permanent opt-in — no more accidental forever-blocks of CGNAT addresses.
+- **AuthShield survives path rewrites**, blocklist checks no longer cost a DB query per request, constant-time login comparison, and loud warnings for storage/proxy misconfigurations.
+
+See [CHANGELOG.md](CHANGELOG.md) for details and behavior-change notes.
 
 ## What's new in v2.0.0
 

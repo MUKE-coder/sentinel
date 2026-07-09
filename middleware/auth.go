@@ -87,8 +87,13 @@ func (as *AuthShield) Middleware() gin.HandlerFunc {
 			return
 		}
 
-		// Only intercept the login route
-		if c.Request.URL.Path != as.config.LoginRoute {
+		// Only intercept the login route. Match the registered route pattern
+		// (FullPath) as well as the raw URL path: an upstream middleware that
+		// rewrites URL.Path would otherwise disable AuthShield entirely and
+		// silently — brute-force protection just stops existing (issue #8).
+		// FullPath also makes parameterized login routes ("/login/:tenant")
+		// configurable by their registered pattern.
+		if c.Request.URL.Path != as.config.LoginRoute && c.FullPath() != as.config.LoginRoute {
 			c.Next()
 			return
 		}

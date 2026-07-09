@@ -2,6 +2,103 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.1.0] - 2026-07-10
+
+Emergency-priority fix release for issues [#7](https://github.com/MUKE-coder/sentinel/issues/7)
+and [#8](https://github.com/MUKE-coder/sentinel/issues/8), which together took
+down a production deployment: the WAF's SSRF pattern matched the version
+string of every stable-channel browser, and the wildcard route exclusions
+that would have contained the blast radius were silently ignored.
+
+**If you run `WAF.Mode = ModeBlock`, upgrade immediately.**
+
+### 🔥 Critical fix
+
+- **WAF no longer blocks Chrome/Edge/Brave users** (#8). The SSRF rule's IP
+  alternatives were unanchored, so `0.0.0.0` matched inside
+  `Chrome/140.0.0.0` and `10.x.x.x` inside `110.0.0.0` — in `ModeBlock`,
+  every request from a browser whose major version ends in zero got a 403.
+  Two-part fix:
+  - Internal-host tokens are now **anchored**: they only match as a
+    standalone token or URL host, never inside a longer dotted number.
+    Bare `::1` now requires brackets (`[::1]`).
+  - Patterns are now **scoped to the locations where the vulnerability
+    class actually lives** (new `Locations` field on detection patterns).
+    SSRF, XXE, and prototype-pollution patterns scan query + body only;
+    open-redirect scans query only (Referer headers legitimately embed
+    full URLs); LFI scans path + query + body. SQLi, XSS, path-traversal
+    and command-injection patterns still scan headers.
+  - Regression tests pin Chrome 110–200 User-Agents so this cannot
+    silently recur each time Chrome reaches a version ending in zero.
+
+### 🔐 Security fixes
+
+- **WebSocket endpoints now require a valid JWT.** `/ws/threats`,
+  `/ws/metrics`, and `/ws/alerts` previously validated the token only when
+  one was supplied — an unauthenticated client could subscribe to the live
+  threat feed (attacker IPs, matched payloads, request paths). The embedded
+  dashboard always sent the token, so no dashboard change is needed.
+- **Dashboard login uses constant-time credential comparison**
+  (`crypto/subtle`) instead of `!=`.
+- **Dashboard IP blocks are bounded by default** (#8). "Block IP" /
+  "Block actor" now default to a **24-hour expiry**; a permanent block
+  requires an explicit `"permanent": true` in the request. Previously one
+  click wrote `expires_at = NULL` — permanent, restart-surviving, and
+  catastrophic for CGNAT egress IPs. Responses now include `expires_at`.
+
+### 🐛 Fixes
+
+- **Wildcard route patterns actually match** (#7, #8). One shared matcher
+  now backs `WAF.ExcludeRoutes` and `RateLimit.ByRoute`:
+  - exact: `/health`
+  - trailing wildcard: `/v1/*` or `/v1/**` (both match `/v1` and
+    everything under `/v1/`)
+  - segment glob: `/api/apps/*/products` (`path.Match` semantics)
+  Previously entries containing `*` were silent dead code in both configs —
+  release-notes call-out: any `/v1/**` entry you shipped has had WAF
+  inspection / no route limit on those paths the whole time.
+  `RateLimit.ExcludeRoutes` keeps its historical prefix behavior for plain
+  entries and additionally supports the wildcard shapes. Wildcard `ByRoute`
+  counters are shared per pattern (per client IP), so rotating sub-paths
+  can't reset a budget; an exact key wins over a pattern.
+- **AuthShield survives path rewrites** (#8). The login route is matched
+  against the registered route pattern (`c.FullPath()`) as well as
+  `URL.Path`, so upstream middleware that rewrites the path can no longer
+  silently disable brute-force protection. Parameterized login routes
+  (`/login/:tenant`) can now be configured by their registered pattern.
+- **No more per-request blocklist DB query** (#8). `Mount` wires the WAF to
+  the IP manager's in-memory cache (synced every 30 s, updated immediately
+  on block/unblock), removing one storage round trip from the hot path —
+  and CIDR blocks now take effect in the WAF, which the old exact-match
+  query never honored. Direct `middleware.WAFMiddleware` callers can pass
+  the new optional `IPBlockChecker`; without one, the storage fallback now
+  **logs lookup failures** (throttled 1/min) instead of silently failing
+  open.
+
+### 📣 Operational visibility
+
+- **Storage-target warning** (#8): if you pass a `*gorm.DB` but leave
+  `Storage` unset, Mount now warns loudly that security data goes to the
+  `sentinel.db` SQLite file, not your database — the `db` parameter only
+  wires audit-log capture.
+- **Reverse-proxy misconfiguration warning** (#8): if requests carry
+  `X-Forwarded-For` / `X-Real-IP` while `WAF.TrustedProxies` is empty,
+  Sentinel logs a one-time warning that per-IP blocks, rate limits, and
+  threat attribution are keying on the proxy address.
+- Invalid or unsupported route patterns (e.g. `**` mid-pattern) are logged
+  at mount instead of matching nothing silently.
+
+### Compatibility
+
+- No breaking API changes. `middleware.WAFMiddleware` gained an optional
+  variadic parameter; all existing call sites compile unchanged.
+- Behavior changes to review before upgrading:
+  - Dashboard blocks now expire after 24 h unless `"permanent": true`.
+  - WebSocket connections without a token are rejected (the embedded
+    dashboard is unaffected).
+  - Wildcard `ExcludeRoutes` / `ByRoute` entries that were previously dead
+    now take effect — audit yours before deploying.
+
 ## [2.0.1] - 2026-05-29
 
 Follow-up to v2.0.0 that closes the only gap shipped with the main release:

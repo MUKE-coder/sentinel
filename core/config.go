@@ -62,10 +62,15 @@ type StorageConfig struct {
 
 // WAFConfig configures the Web Application Firewall.
 type WAFConfig struct {
-	Enabled       bool
-	Mode          WAFMode
-	Rules         RuleSet
-	CustomRules   []WAFRule
+	Enabled     bool
+	Mode        WAFMode
+	Rules       RuleSet
+	CustomRules []WAFRule
+
+	// ExcludeRoutes lists paths the WAF will not inspect. Entries may be
+	// exact ("/health"), trailing-wildcard prefixes ("/v1/*" or "/v1/**" —
+	// both match "/v1" and everything under "/v1/"), or segment globs
+	// ("/api/apps/*/products", path.Match semantics).
 	ExcludeRoutes []string
 	ExcludeIPs    []string
 
@@ -118,12 +123,24 @@ type Limit struct {
 
 // RateLimitConfig configures multi-dimensional rate limiting.
 type RateLimitConfig struct {
-	Enabled         bool
-	ByIP            *Limit
-	ByUser          *Limit
-	ByRoute         map[string]Limit
-	Global          *Limit
-	Strategy        RateLimitStrategy
+	Enabled bool
+	ByIP    *Limit
+	ByUser  *Limit
+
+	// ByRoute maps a path to its limit. Keys may be exact ("/api/auth/login")
+	// or wildcard patterns ("/v1/*", "/api/apps/*/products"). All paths
+	// matching one pattern share that pattern's counter (per client IP), so
+	// rotating sub-paths cannot reset the budget. When both an exact key and
+	// a pattern match, the exact key wins.
+	ByRoute map[string]Limit
+
+	Global   *Limit
+	Strategy RateLimitStrategy
+
+	// ExcludeRoutes lists paths exempt from rate limiting. Plain entries
+	// match by prefix ("/static" also exempts "/static/app.js" — historical
+	// behavior, kept for compatibility); entries containing wildcards use
+	// the same pattern shapes as WAFConfig.ExcludeRoutes.
 	ExcludeRoutes   []string
 	UserIDExtractor func(c *gin.Context) string
 }
