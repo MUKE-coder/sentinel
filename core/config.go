@@ -69,8 +69,11 @@ type WAFConfig struct {
 
 	// ExcludeRoutes lists paths the WAF will not inspect. Entries may be
 	// exact ("/health"), trailing-wildcard prefixes ("/v1/*" or "/v1/**" —
-	// both match "/v1" and everything under "/v1/"), or segment globs
-	// ("/api/apps/*/products", path.Match semantics).
+	// both match "/v1" and everything under "/v1/"), segment globs
+	// ("/api/apps/*/products", path.Match semantics), or a combination of
+	// segment wildcards with a trailing globstar
+	// ("/api/apps/*/products/**" — the parameterised subtree and any depth
+	// below it).
 	ExcludeRoutes []string
 	ExcludeIPs    []string
 

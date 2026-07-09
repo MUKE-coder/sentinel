@@ -2,6 +2,26 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.1.2] - 2026-07-10
+
+Fixes issue [#12](https://github.com/MUKE-coder/sentinel/issues/12): the
+route matcher introduced in v2.1.0 had its own silent-dead-config bug.
+
+### 🐛 Fix
+
+- **`/**` after a segment wildcard now actually matches** (#12). A pattern
+  like `/api/apps/*/products/**` — the natural way to exclude a
+  parameterised subtree, which is most REST paths — compiled into a literal
+  string prefix containing `*`, matched nothing, and warned about nothing.
+  Such patterns are now compiled to a segment-by-segment matcher: each
+  segment is a `path.Match` glob consuming exactly one path segment, and the
+  trailing `**` consumes any remainder including none, so the pattern
+  matches `/api/apps/13/products` itself and everything below it. Plain
+  subtree patterns (`/v1/**`) keep the cheap prefix compare. An interior
+  `**` (not at the end) remains unsupported and is still rejected with a
+  mount-time warning; malformed glob segments are likewise warned about and
+  dropped rather than silently matching nothing.
+
 ## [2.1.1] - 2026-07-10
 
 Follow-up to v2.1.0 for issue [#10](https://github.com/MUKE-coder/sentinel/issues/10):

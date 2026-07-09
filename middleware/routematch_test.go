@@ -28,6 +28,10 @@ func TestRouteMatcher(t *testing.T) {
 		{"mixed list", []string{"/health", "/v1/**"}, "/v1/x", true},
 		{"empty list", nil, "/anything", false},
 		{"mid double-star ignored", []string{"/api/**/products"}, "/api/a/products", false},
+		{"globstar after wildcard deep", []string{"/api/apps/*/products/**"}, "/api/apps/13/products/9/variants", true},
+		{"globstar after wildcard base", []string{"/api/apps/*/products/**"}, "/api/apps/13/products", true},
+		{"globstar after wildcard sibling", []string{"/api/apps/*/products/**"}, "/api/apps/13/orders/9", false},
+		{"globstar wildcard segment is one segment", []string{"/api/apps/*/products/**"}, "/api/apps/13/x/products/9", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -36,6 +40,29 @@ func TestRouteMatcher(t *testing.T) {
 				t.Errorf("NewRouteMatcher(%v).Matches(%q) = %v, want %v", tc.patterns, tc.path, got, tc.want)
 			}
 		})
+	}
+}
+
+// Regression test for issue #12: a trailing "/**" with an interior "*"
+// compiled into a literal prefix containing "*", which matched nothing and
+// warned about nothing. Parameterised subtrees are the common case in REST
+// paths, so this shape must genuinely match.
+func TestRouteMatcherGlobstarAfterWildcard(t *testing.T) {
+	m := NewRouteMatcher([]string{"/api/apps/*/products/**"})
+	for _, p := range []string{
+		"/api/apps/13/products",
+		"/api/apps/13/products/9",
+		"/api/apps/13/products/9/variants",
+	} {
+		if !m.Matches(p) {
+			t.Errorf("%s should match", p)
+		}
+	}
+	if m.Matches("/api/apps/13/orders/9") {
+		t.Error("must not match a sibling subtree")
+	}
+	if m.Matches("/api/apps") {
+		t.Error("must not match above the pattern depth")
 	}
 }
 
