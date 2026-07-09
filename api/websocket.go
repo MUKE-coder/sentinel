@@ -87,19 +87,32 @@ func (h *WSHub) Broadcast(event pipeline.Event) {
 	}
 }
 
-func (s *Server) handleWSThreats(c *gin.Context) {
+// wsAuthorized validates the JWT passed as ?token= on a WebSocket endpoint.
+// A valid token is REQUIRED: these endpoints stream the live threat feed
+// (attacker IPs, matched payloads, request paths), and before v2.1.0 a
+// missing token was accepted — any unauthenticated client could subscribe.
+func (s *Server) wsAuthorized(c *gin.Context) bool {
 	tokenStr := c.Query("token")
-	if tokenStr != "" {
-		_, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrSignatureInvalid
-			}
-			return []byte(s.config.Dashboard.SecretKey), nil
-		})
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			return
+	if tokenStr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing token", "code": "UNAUTHORIZED"})
+		return false
+	}
+	_, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
 		}
+		return []byte(s.config.Dashboard.SecretKey), nil
+	})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token", "code": "UNAUTHORIZED"})
+		return false
+	}
+	return true
+}
+
+func (s *Server) handleWSThreats(c *gin.Context) {
+	if !s.wsAuthorized(c) {
+		return
 	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -115,18 +128,8 @@ func (s *Server) handleWSThreats(c *gin.Context) {
 }
 
 func (s *Server) handleWSMetrics(c *gin.Context) {
-	tokenStr := c.Query("token")
-	if tokenStr != "" {
-		_, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrSignatureInvalid
-			}
-			return []byte(s.config.Dashboard.SecretKey), nil
-		})
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			return
-		}
+	if !s.wsAuthorized(c) {
+		return
 	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)

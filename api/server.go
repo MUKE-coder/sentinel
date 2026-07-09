@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strconv"
 	"strings"
@@ -233,7 +234,12 @@ func (s *Server) handleLogin(c *gin.Context) {
 		return
 	}
 
-	if req.Username != s.config.Dashboard.Username || req.Password != s.config.Dashboard.Password {
+	// Constant-time comparison — a plain != leaks credential length/prefix
+	// timing. Compare both fields unconditionally so the failure path takes
+	// the same time regardless of which field is wrong.
+	userOK := subtle.ConstantTimeCompare([]byte(req.Username), []byte(s.config.Dashboard.Username)) == 1
+	passOK := subtle.ConstantTimeCompare([]byte(req.Password), []byte(s.config.Dashboard.Password)) == 1
+	if !userOK || !passOK {
 		s.loginRL.RecordFailure(clientIP)
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "Invalid credentials",
@@ -393,14 +399,35 @@ func (s *Server) handleBlockActor(c *gin.Context) {
 	ip := c.Param("ip")
 	ctx := c.Request.Context()
 
+	// Same bounded default as handleBlockIP — one dashboard click must not
+	// permanently blackhole an address. An optional body opts in.
+	var req struct {
+		Reason    string `json:"reason"`
+		Permanent bool   `json:"permanent,omitempty"`
+	}
+	_ = c.ShouldBindJSON(&req) // body is optional; ignore absence
+	if req.Reason == "" {
+		req.Reason = "Blocked via dashboard"
+	}
+
+	var expiry *time.Time
+	if !req.Permanent {
+		t := time.Now().Add(defaultBlockDuration)
+		expiry = &t
+	}
+
 	if s.ipManager != nil {
-		if err := s.ipManager.BlockIP(ctx, ip, "Blocked via dashboard", nil); err != nil {
+		if err := s.ipManager.BlockIP(ctx, ip, req.Reason, expiry); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "INTERNAL_ERROR"})
 			return
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Actor blocked"})
+	resp := gin.H{"message": "Actor blocked"}
+	if expiry != nil {
+		resp["expires_at"] = expiry.Format(time.RFC3339)
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // --- IP Management handlers ---
@@ -414,11 +441,21 @@ func (s *Server) handleListBlockedIPs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": blocked})
 }
 
+// defaultBlockDuration bounds dashboard-initiated IP blocks when no expiry
+// is given. A one-click permanent block is a footgun: for a mobile-carrier
+// CGNAT egress address it blackholes thousands of real users forever, and it
+// survives restarts and redeploys (issue #8). Permanent blocks require the
+// explicit opt-in flag.
+const defaultBlockDuration = 24 * time.Hour
+
 func (s *Server) handleBlockIP(c *gin.Context) {
 	var req struct {
 		IP     string `json:"ip"`
 		Reason string `json:"reason"`
+		// Expiry is an RFC3339 timestamp when the block should lift.
 		Expiry string `json:"expiry,omitempty"`
+		// Permanent opts in to a never-expiring block.
+		Permanent bool `json:"permanent,omitempty"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -434,9 +471,14 @@ func (s *Server) handleBlockIP(c *gin.Context) {
 	var expiry *time.Time
 	if req.Expiry != "" {
 		t, err := time.Parse(time.RFC3339, req.Expiry)
-		if err == nil {
-			expiry = &t
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "expiry must be RFC3339", "code": "BAD_REQUEST"})
+			return
 		}
+		expiry = &t
+	} else if !req.Permanent {
+		t := time.Now().Add(defaultBlockDuration)
+		expiry = &t
 	}
 
 	if s.ipManager != nil {
@@ -446,7 +488,11 @@ func (s *Server) handleBlockIP(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "IP blocked"})
+	resp := gin.H{"message": "IP blocked"}
+	if expiry != nil {
+		resp["expires_at"] = expiry.Format(time.RFC3339)
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (s *Server) handleUnblockIP(c *gin.Context) {

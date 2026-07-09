@@ -66,7 +66,16 @@ func Mount(router *gin.Engine, db *gorm.DB, config Config) {
 // want a sub-system failure to kill the host process should prefer this and
 // handle the returned error themselves (log + skip Sentinel, retry, etc.).
 func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
+	storageExplicit := config.Storage.Driver != ""
 	config.ApplyDefaults()
+
+	// Passing a *gorm.DB strongly implies Sentinel will store its data there.
+	// It will not — the db parameter only wires the audit-logging plugin.
+	// Say so loudly instead of silently writing security state to a SQLite
+	// file next to the binary, which containers wipe on every deploy.
+	if !storageExplicit && db != nil {
+		log.Printf("[sentinel] WARNING: Storage.Driver not set — security data (threats, blocked IPs, audit logs) goes to SQLite file %q, NOT the *gorm.DB you passed (that is only used for audit-log capture). Set Storage explicitly to silence this warning.", config.Storage.DSN)
+	}
 
 	// Refuse to start with built-in default credentials in release mode unless
 	// the operator has explicitly opted in. This stops zero-config deployments
@@ -196,9 +205,10 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	// 5f. Initialize custom rule engine
 	customRuleEngine := detection.NewCustomRuleEngine(config.WAF.CustomRules)
 
-	// 6. Register middleware
+	// 6. Register middleware. The IP manager's synced cache answers blocklist
+	// lookups so the WAF never queries storage on the request hot path.
 	if config.WAF.Enabled {
-		router.Use(middleware.WAFMiddleware(config.WAF, store, pipe, customRuleEngine))
+		router.Use(middleware.WAFMiddleware(config.WAF, store, pipe, customRuleEngine, ipManager))
 	}
 
 	// 7. Register rate limiter

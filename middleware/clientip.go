@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net"
 	"net/netip"
 	"strings"
@@ -63,12 +64,28 @@ func isTrustedProxy(ip string) bool {
 	return false
 }
 
+// proxyHeaderWarnOnce guards the one-time warning emitted when proxy headers
+// arrive but no trusted proxies are configured — the deployment is almost
+// certainly behind a reverse proxy, and every per-IP feature (blocks, rate
+// limits, threat attribution) is keying on the proxy's address, not the
+// client's (issue #8).
+var proxyHeaderWarnOnce sync.Once
+
 // extractClientIP returns the client IP from the request. Proxy headers
 // (X-Forwarded-For, X-Real-IP) are honored only when the direct connection
 // originates from a configured trusted proxy. This prevents trivial header
 // spoofing of the source IP used for blocks and rate limits.
 func extractClientIP(c *gin.Context) string {
 	directIP := directConnectionIP(c)
+
+	trustedProxiesMu.RLock()
+	noTrustedProxies := len(trustedProxies) == 0
+	trustedProxiesMu.RUnlock()
+	if noTrustedProxies && (c.GetHeader("X-Forwarded-For") != "" || c.GetHeader("X-Real-IP") != "") {
+		proxyHeaderWarnOnce.Do(func() {
+			log.Printf("[sentinel] WARNING: request carries X-Forwarded-For/X-Real-IP but WAF.TrustedProxies is empty — recording the direct connection IP (%s), which is likely your reverse proxy. Per-IP rate limits, IP blocks, and threat attribution will all key on that single address. Set WAF.TrustedProxies to your proxy's IP/CIDR.", directIP)
+		})
+	}
 
 	if isTrustedProxy(directIP) {
 		if xff := c.GetHeader("X-Forwarded-For"); xff != "" {

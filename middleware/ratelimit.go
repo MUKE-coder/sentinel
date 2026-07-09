@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -136,8 +137,55 @@ func (rl *RateLimiter) cleanup() {
 	}
 }
 
+// routeLimit pairs a ByRoute pattern with its compiled matcher so wildcard
+// keys ("/v1/*", "/api/apps/*/products") actually match. Before v2.1.0 ByRoute
+// was exact-lookup only, so a pattern-shaped key silently rate-limited nothing
+// (issue #8). All paths matching one pattern share that pattern's counter —
+// otherwise an attacker could reset their budget by rotating sub-paths.
+type routeLimit struct {
+	pattern string
+	matcher *RouteMatcher
+	limit   sentinel.Limit
+}
+
+// compileRouteLimits splits ByRoute into an exact-lookup map and ordered
+// pattern matchers (longest pattern first, so more specific wins).
+func compileRouteLimits(byRoute map[string]sentinel.Limit) (map[string]sentinel.Limit, []routeLimit) {
+	exact := make(map[string]sentinel.Limit)
+	var patterns []routeLimit
+	for k, v := range byRoute {
+		if strings.ContainsAny(k, "*?[") {
+			patterns = append(patterns, routeLimit{pattern: k, matcher: NewRouteMatcher([]string{k}), limit: v})
+		} else {
+			exact[k] = v
+		}
+	}
+	sort.Slice(patterns, func(i, j int) bool {
+		if len(patterns[i].pattern) != len(patterns[j].pattern) {
+			return len(patterns[i].pattern) > len(patterns[j].pattern)
+		}
+		return patterns[i].pattern < patterns[j].pattern
+	})
+	return exact, patterns
+}
+
 // RateLimitMiddleware creates a Gin middleware for multi-dimensional rate limiting.
 func RateLimitMiddleware(config sentinel.RateLimitConfig, limiter *RateLimiter, pipe *pipeline.Pipeline) gin.HandlerFunc {
+	// Wildcard entries in ExcludeRoutes are compiled to real matchers; plain
+	// entries keep their long-standing prefix-match behavior so existing
+	// configs ("/static" excluding "/static/app.js") are not broken.
+	var excludeWildcards []string
+	var excludePlain []string
+	for _, e := range config.ExcludeRoutes {
+		if strings.ContainsAny(e, "*?[") {
+			excludeWildcards = append(excludeWildcards, e)
+		} else {
+			excludePlain = append(excludePlain, e)
+		}
+	}
+	excludeMatcher := NewRouteMatcher(excludeWildcards)
+	exactLimits, patternLimits := compileRouteLimits(config.ByRoute)
+
 	return func(c *gin.Context) {
 		if !config.Enabled {
 			c.Next()
@@ -148,29 +196,32 @@ func RateLimitMiddleware(config sentinel.RateLimitConfig, limiter *RateLimiter, 
 		path := c.Request.URL.Path
 
 		// Skip excluded routes
-		for _, excluded := range config.ExcludeRoutes {
+		for _, excluded := range excludePlain {
 			if strings.HasPrefix(path, excluded) {
 				c.Next()
 				return
 			}
 		}
+		if !excludeMatcher.Empty() && excludeMatcher.Matches(path) {
+			c.Next()
+			return
+		}
 
-		// Per-route limits (highest priority)
-		if config.ByRoute != nil {
-			if routeLimit, ok := config.ByRoute[path]; ok {
-				key := "route:" + path + ":" + clientIP
-				if !limiter.check(key, routeLimit.Requests, routeLimit.Window) {
-					emitRateLimitEvent(pipe, clientIP, path, c, "route")
-					retryAfter := int(routeLimit.Window.Seconds())
-					c.Header("Retry-After", strconv.Itoa(retryAfter))
-					c.Header("X-RateLimit-Limit", strconv.Itoa(routeLimit.Requests))
-					c.Header("X-RateLimit-Remaining", "0")
-					c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-						"error": "Rate limit exceeded",
-						"code":  "RATE_LIMITED",
-					})
-					return
-				}
+		// Per-route limits (highest priority): exact key first, then the most
+		// specific matching wildcard pattern.
+		if limit, key, ok := resolveRouteLimit(exactLimits, patternLimits, path); ok {
+			counterKey := "route:" + key + ":" + clientIP
+			if !limiter.check(counterKey, limit.Requests, limit.Window) {
+				emitRateLimitEvent(pipe, clientIP, path, c, "route")
+				retryAfter := int(limit.Window.Seconds())
+				c.Header("Retry-After", strconv.Itoa(retryAfter))
+				c.Header("X-RateLimit-Limit", strconv.Itoa(limit.Requests))
+				c.Header("X-RateLimit-Remaining", "0")
+				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+					"error": "Rate limit exceeded",
+					"code":  "RATE_LIMITED",
+				})
+				return
 			}
 		}
 
@@ -229,6 +280,21 @@ func RateLimitMiddleware(config sentinel.RateLimitConfig, limiter *RateLimiter, 
 
 		c.Next()
 	}
+}
+
+// resolveRouteLimit returns the limit and counter-key component for a path:
+// the exact ByRoute entry when one exists, else the first (most specific)
+// matching wildcard pattern.
+func resolveRouteLimit(exact map[string]sentinel.Limit, patterns []routeLimit, path string) (sentinel.Limit, string, bool) {
+	if limit, ok := exact[path]; ok {
+		return limit, path, true
+	}
+	for _, rl := range patterns {
+		if rl.matcher.Matches(path) {
+			return rl.limit, rl.pattern, true
+		}
+	}
+	return sentinel.Limit{}, "", false
 }
 
 func emitRateLimitEvent(pipe *pipeline.Pipeline, ip, path string, c *gin.Context, dimension string) {

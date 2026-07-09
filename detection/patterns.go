@@ -24,6 +24,28 @@ type PatternDef struct {
 
 	// BaseConfidence is the default confidence score (0-100) for this pattern.
 	BaseConfidence int
+
+	// Locations restricts which request locations this pattern is evaluated
+	// against: "path", "query", "header", "body". Empty means all locations.
+	// Patterns for vulnerabilities that only exist in attacker-supplied URLs
+	// or documents (SSRF, XXE, open redirect) must not scan high-cardinality
+	// strings like User-Agent or Cookie — that is how "Chrome/140.0.0.0"
+	// ends up classified as an SSRF attack (issue #8).
+	Locations []string
+}
+
+// AppliesTo reports whether this pattern should be evaluated against input
+// found at the given location.
+func (p PatternDef) AppliesTo(location string) bool {
+	if len(p.Locations) == 0 {
+		return true
+	}
+	for _, l := range p.Locations {
+		if l == location {
+			return true
+		}
+	}
+	return false
 }
 
 // Patterns contains all compiled detection patterns, organized by threat type.
@@ -105,11 +127,19 @@ func init() {
 
 		// --- SSRF ---
 		{
-			Name:           "SSRF",
-			Regex:          regexp.MustCompile(`(?i)(localhost|127\.0\.0\.1|0\.0\.0\.0|169\.254\.169\.254|::1|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|file:\/\/|dict:\/\/|gopher:\/\/|ftp:\/\/[^.]*localhost)`),
+			Name: "SSRF",
+			// Internal hosts must appear as a standalone token or URL host —
+			// bounded by non-hostname characters — so they can never match
+			// inside a longer dotted number. Unanchored, `0\.0\.0\.0` matches
+			// inside "Chrome/140.0.0.0" and `10\.\d+\.\d+\.\d+` inside
+			// "110.0.0.0", blocking every stable-channel browser (issue #8).
+			// `::1` requires brackets for the same reason: the bare form
+			// matches any string containing "::1".
+			Regex:          regexp.MustCompile(`(?i)((?:^|[^\w.-])(?:localhost|127\.0\.0\.1|0\.0\.0\.0|169\.254\.169\.254|\[::1\]|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(?:[^\w.-]|$)|file:\/\/|dict:\/\/|gopher:\/\/|ftp:\/\/[^.]*localhost)`),
 			ThreatType:     sentinel.ThreatSSRF,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 70,
+			Locations:      []string{"query", "body"},
 		},
 
 		// --- XXE ---
@@ -119,6 +149,7 @@ func init() {
 			ThreatType:     sentinel.ThreatXXE,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 80,
+			Locations:      []string{"query", "body"},
 		},
 
 		// --- Local File Inclusion (LFI) ---
@@ -128,6 +159,7 @@ func init() {
 			ThreatType:     sentinel.ThreatLFI,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 80,
+			Locations:      []string{"path", "query", "body"},
 		},
 
 		// --- Open Redirect ---
@@ -137,6 +169,9 @@ func init() {
 			ThreatType:     sentinel.ThreatOpenRedirect,
 			BaseSeverity:   sentinel.SeverityMedium,
 			BaseConfidence: 60,
+			// Referer headers routinely embed full URLs in their own query
+			// strings ("?url=https://..."), so this must never scan headers.
+			Locations:      []string{"query"},
 		},
 
 		// --- Prototype Pollution ---
@@ -146,6 +181,7 @@ func init() {
 			ThreatType:     sentinel.ThreatPrototypePollution,
 			BaseSeverity:   sentinel.SeverityMedium,
 			BaseConfidence: 75,
+			Locations:      []string{"query", "body"},
 		},
 	}
 }

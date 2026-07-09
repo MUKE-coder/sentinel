@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"log"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	sentinel "github.com/MUKE-coder/sentinel/v2/core"
@@ -29,15 +31,30 @@ func ActorIDFromIP(ip string) string {
 	return "actor_" + hex.EncodeToString(sum[:8])
 }
 
+// IPBlockChecker answers "is this IP blocked?" from an in-memory cache.
+// *intelligence.IPManager satisfies it: it syncs from storage every 30s and
+// is updated immediately on block/unblock, so lookups never hit the database
+// on the request hot path.
+type IPBlockChecker interface {
+	IsBlocked(ip string) bool
+}
+
 // WAFMiddleware creates a Gin middleware that inspects requests for threats
 // and handles them according to the configured WAF mode. customEngine may be
 // nil; pass a configured *detection.CustomRuleEngine to also evaluate custom
 // rules alongside the built-in pattern set.
-func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipeline.Pipeline, customEngine *detection.CustomRuleEngine) gin.HandlerFunc {
+//
+// Pass an IPBlockChecker (e.g. intelligence.IPManager) to answer blocklist
+// lookups from memory. Without one, every request costs a storage round trip
+// ahead of the handler — one DB query per request on the hot path (issue #8).
+// Mount always supplies the checker; the store fallback exists for callers
+// wiring the middleware directly.
+func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipeline.Pipeline, customEngine *detection.CustomRuleEngine, blockChecker ...IPBlockChecker) gin.HandlerFunc {
 	customRuleEngine := customEngine
-	excludeRouteSet := make(map[string]bool)
-	for _, r := range config.ExcludeRoutes {
-		excludeRouteSet[r] = true
+	excludeRoutes := NewRouteMatcher(config.ExcludeRoutes)
+	var checker IPBlockChecker
+	if len(blockChecker) > 0 {
+		checker = blockChecker[0]
 	}
 	excludeIPSet := make(map[string]bool)
 	for _, ip := range config.ExcludeIPs {
@@ -52,8 +69,8 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 
 		path := c.Request.URL.Path
 
-		// Check if route is excluded
-		if excludeRouteSet[path] {
+		// Check if route is excluded (exact, "/prefix/*", or glob — see RouteMatcher)
+		if excludeRoutes.Matches(path) {
 			c.Next()
 			return
 		}
@@ -66,16 +83,26 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 			return
 		}
 
-		// Check if IP is blocked
-		if store != nil {
-			blocked, _ := store.IsIPBlocked(c.Request.Context(), clientIP)
-			if blocked {
-				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-					"error": "Access denied",
-					"code":  "IP_BLOCKED",
-				})
-				return
+		// Check if IP is blocked — from cache when a checker is wired,
+		// otherwise falling back to a storage lookup.
+		blocked := false
+		if checker != nil {
+			blocked = checker.IsBlocked(clientIP)
+		} else if store != nil {
+			var err error
+			blocked, err = store.IsIPBlocked(c.Request.Context(), clientIP)
+			if err != nil {
+				// Fail open, but never silently: a storage outage otherwise
+				// degrades to "nothing is blocked" with no operator signal.
+				logBlockLookupError(err)
 			}
+		}
+		if blocked {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": "Access denied",
+				"code":  "IP_BLOCKED",
+			})
+			return
 		}
 
 		// Determine inspection cap
@@ -211,6 +238,19 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 				pipe.EmitThreat(threatEvent)
 			}
 		}
+	}
+}
+
+// lastBlockLookupErrLog throttles block-lookup failure logging to once per
+// minute — a storage outage under traffic would otherwise flood the log with
+// one line per request.
+var lastBlockLookupErrLog atomic.Int64
+
+func logBlockLookupError(err error) {
+	now := time.Now().Unix()
+	last := lastBlockLookupErrLog.Load()
+	if now-last >= 60 && lastBlockLookupErrLog.CompareAndSwap(last, now) {
+		log.Printf("[sentinel] IP block lookup failed (failing open, throttled 1/min): %v", err)
 	}
 }
 

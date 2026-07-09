@@ -313,6 +313,96 @@ func TestHeaderScanning(t *testing.T) {
 	}
 }
 
+// Regression test for issue #8: the unanchored SSRF pattern matched
+// "0.0.0.0" inside Chrome's version string ("Chrome/140.0.0.0") and
+// "10.0.0.0" inside "110.0.0.0", classifying every stable-channel browser
+// as an SSRF attacker. Pins every Chrome major ending in zero, past and
+// future, plus the Windows NT token.
+func TestSSRFDoesNotMatchBrowserUserAgents(t *testing.T) {
+	for _, v := range []string{"110.0.0.0", "120.0.0.0", "130.0.0.0", "140.0.0.0", "150.0.0.0", "200.0.0.0"} {
+		ua := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+			"(KHTML, like Gecko) Chrome/" + v + " Safari/537.36"
+		req := sentinel.InspectedRequest{
+			Method: "GET",
+			Path:   "/api/provider-health",
+			Headers: map[string][]string{
+				"User-Agent": {ua},
+			},
+		}
+		if got := ClassifyRequest(req); len(got) != 0 {
+			t.Errorf("Chrome/%s flagged as %v", v, matchTypes(got))
+		}
+	}
+}
+
+// The anchored pattern must still catch internal hosts in the locations
+// where SSRF actually lives: query parameters and bodies.
+func TestSSRFStillDetectsInternalHosts(t *testing.T) {
+	cases := []struct {
+		name string
+		req  sentinel.InspectedRequest
+	}{
+		{"zero host in query", sentinel.InspectedRequest{RawQuery: "url=http://0.0.0.0:8080/admin"}},
+		{"bare private ip in query", sentinel.InspectedRequest{RawQuery: "target=10.0.0.5"}},
+		{"metadata ip in body", sentinel.InspectedRequest{Body: `{"callback_url":"http://169.254.169.254/latest/meta-data"}`}},
+		{"bracketed ipv6 loopback", sentinel.InspectedRequest{RawQuery: "url=http://[::1]/admin"}},
+		{"rfc1918 172 range", sentinel.InspectedRequest{RawQuery: "url=http://172.16.0.1/internal"}},
+		{"192.168 in body", sentinel.InspectedRequest{Body: `{"host":"192.168.1.1"}`}},
+		{"gopher scheme", sentinel.InspectedRequest{RawQuery: "u=gopher://evil/_stats"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hasSSRF := false
+			for _, m := range ClassifyRequest(tc.req) {
+				if m.ThreatType == sentinel.ThreatSSRF {
+					hasSSRF = true
+					break
+				}
+			}
+			if !hasSSRF {
+				t.Errorf("expected SSRF detection, got: %v", matchTypes(ClassifyRequest(tc.req)))
+			}
+		})
+	}
+}
+
+// SSRF host tokens in headers must never match — a Cookie holding an
+// internal IP or a Referer of http://localhost/ is plausible real traffic,
+// not a server-side request forgery vector.
+func TestSSRFPatternSkipsHeaders(t *testing.T) {
+	req := sentinel.InspectedRequest{
+		Method: "GET",
+		Path:   "/api/test",
+		Headers: map[string][]string{
+			"Cookie":  {"last_backend=10.1.2.3"},
+			"Referer": {"http://localhost:3000/dev"},
+			"Origin":  {"http://127.0.0.1:5173"},
+		},
+	}
+	for _, m := range ClassifyRequest(req) {
+		if m.ThreatType == sentinel.ThreatSSRF {
+			t.Errorf("SSRF pattern matched header %q (%q) — SSRF must only scan query/body", m.Parameter, m.Matched)
+		}
+	}
+}
+
+// Open-redirect patterns must not scan the Referer header, which routinely
+// embeds full URLs in its own query string.
+func TestOpenRedirectSkipsReferer(t *testing.T) {
+	req := sentinel.InspectedRequest{
+		Method: "GET",
+		Path:   "/products",
+		Headers: map[string][]string{
+			"Referer": {"https://www.google.com/search?q=shop&url=https://example.com/products"},
+		},
+	}
+	for _, m := range ClassifyRequest(req) {
+		if m.ThreatType == sentinel.ThreatOpenRedirect {
+			t.Errorf("OpenRedirect matched inside Referer header: %q", m.Matched)
+		}
+	}
+}
+
 func matchTypes(matches []ThreatMatch) []string {
 	var types []string
 	for _, m := range matches {

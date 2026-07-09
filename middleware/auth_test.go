@@ -200,3 +200,47 @@ func TestAuthShield_UnblockUser(t *testing.T) {
 		t.Error("expected user to be unlocked after UnblockUser")
 	}
 }
+
+// Regression test for issue #8: an upstream middleware that rewrites
+// c.Request.URL.Path must not disable AuthShield — the registered route
+// pattern (FullPath) still identifies the login route.
+func TestAuthShield_SurvivesPathRewrite(t *testing.T) {
+	pipe := pipeline.New(100)
+	pipe.Start(1)
+	defer pipe.Stop()
+
+	config := sentinel.AuthShieldConfig{
+		Enabled:           true,
+		LoginRoute:        "/api/login",
+		MaxFailedAttempts: 3,
+		LockoutDuration:   15 * time.Minute,
+	}
+	shield := NewAuthShield(config, nil, pipe)
+
+	r := gin.New()
+	// Simulate a host app that rewrites the path before AuthShield sees it.
+	r.Use(func(c *gin.Context) {
+		if c.Request.URL.Path == "/api/login" {
+			c.Request.URL.Path = "/__rewritten/api/login"
+		}
+		c.Next()
+	})
+	r.Use(shield.Middleware())
+	r.POST("/api/login", func(c *gin.Context) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid"})
+	})
+
+	for i := 0; i < 3; i++ {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, loginRequest("admin", "wrong"))
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d", i+1, w.Code)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, loginRequest("admin", "wrong"))
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 lockout despite path rewrite, got %d", w.Code)
+	}
+}

@@ -77,10 +77,15 @@ func ClassifyRequest(req sentinel.InspectedRequest) []ThreatMatch {
 	return matches
 }
 
-// scanInput checks a single string against all patterns.
+// scanInput checks a single string against all patterns that apply to the
+// given location. Patterns scoped via Locations are skipped elsewhere — e.g.
+// SSRF host patterns never run against User-Agent or Cookie values.
 func scanInput(input, location, parameter string) []ThreatMatch {
 	var matches []ThreatMatch
 	for _, pattern := range Patterns {
+		if !pattern.AppliesTo(location) {
+			continue
+		}
 		loc := pattern.Regex.FindString(input)
 		if loc != "" {
 			matches = append(matches, ThreatMatch{
