@@ -403,6 +403,101 @@ func TestOpenRedirectSkipsReferer(t *testing.T) {
 	}
 }
 
+// Regression test for issue #10: the bare "--" alternative matched inside
+// base64url tokens (a cookie holding two JWTs contains "--" ~9% of the time)
+// and "0x"+hex matched inside opaque ids — and SQLi patterns scanned headers.
+// Ordinary sessions were 403'd at random in ModeBlock.
+func TestSQLiDoesNotMatchOpaqueTokens(t *testing.T) {
+	cookies := []string{
+		"access_token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhYS--YmIifQ.c2ln--bmF0dXJl",
+		"sid=a0x1a2b3c4d5e6f", // 0x + 4 hex inside a token
+		"ref=ple--past--papers",
+	}
+	for _, cookie := range cookies {
+		req := sentinel.InspectedRequest{
+			Method: "GET",
+			Path:   "/health",
+			Headers: map[string][]string{
+				"Cookie": {cookie},
+			},
+		}
+		if got := ClassifyRequest(req); len(got) != 0 {
+			t.Errorf("cookie %q flagged as %v", cookie, matchTypes(got))
+		}
+	}
+
+	// Referer with a double-hyphen SEO slug — plain real traffic.
+	req := sentinel.InspectedRequest{
+		Method: "GET",
+		Path:   "/store/shop",
+		Headers: map[string][]string{
+			"Referer": {"https://example.com/store/shop/ple--past--papers"},
+		},
+	}
+	if got := ClassifyRequest(req); len(got) != 0 {
+		t.Errorf("slug referer flagged as %v", matchTypes(got))
+	}
+}
+
+// Hyphenated slugs and hex-ish ids in query values are not SQL injection —
+// "--" only counts as a comment terminator (followed by whitespace or end of
+// input), and "0x" must not start mid-word.
+func TestSQLiBoundariesInQuery(t *testing.T) {
+	clean := []string{
+		"q=ple--past--papers",
+		"session=a0x1a2b3c4d5e6f",
+	}
+	for _, raw := range clean {
+		req := sentinel.InspectedRequest{RawQuery: raw}
+		for _, m := range ClassifyRequest(req) {
+			if m.ThreatType == sentinel.ThreatSQLi {
+				t.Errorf("query %q flagged as SQLi (matched %q)", raw, m.Matched)
+			}
+		}
+	}
+
+	// The bounded alternatives must still catch real payload shapes.
+	dirty := []string{
+		"id=1' OR 1=1--",          // terminator at end of input
+		"id=1' OR 1=1-- comment",  // terminator followed by space
+		"id=1;-- x",               // stacked-and-commented
+		"id=0x4142434445",         // hex literal after '='
+	}
+	for _, raw := range dirty {
+		req := sentinel.InspectedRequest{RawQuery: raw}
+		hasSQLi := false
+		for _, m := range ClassifyRequest(req) {
+			if m.ThreatType == sentinel.ThreatSQLi {
+				hasSQLi = true
+				break
+			}
+		}
+		if !hasSQLi {
+			t.Errorf("query %q not flagged as SQLi", raw)
+		}
+	}
+}
+
+// SQLi and command-injection patterns must not scan headers at all — a
+// User-Agent or bearer cookie is never concatenated into SQL or a shell.
+// XSS keeps header scanning (reflected-Referer XSS is real, and markup does
+// not occur naturally in headers).
+func TestInjectionPatternsSkipHeaders(t *testing.T) {
+	req := sentinel.InspectedRequest{
+		Method: "GET",
+		Path:   "/api/data",
+		Headers: map[string][]string{
+			"User-Agent": {"tool/1.0 (exec (compatible); sleep (test) and 1 = 1)"},
+			"Cookie":     {"note=drop table of contents; cat /etc/passwd-manual"},
+		},
+	}
+	for _, m := range ClassifyRequest(req) {
+		if m.ThreatType == sentinel.ThreatSQLi || m.ThreatType == sentinel.ThreatCommandInjection {
+			t.Errorf("%s matched in header (%q) — must only scan query/body", m.ThreatType, m.Matched)
+		}
+	}
+}
+
 func matchTypes(matches []ThreatMatch) []string {
 	var types []string
 	for _, m := range matches {

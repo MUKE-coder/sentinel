@@ -55,12 +55,23 @@ var Patterns []PatternDef
 func init() {
 	Patterns = []PatternDef{
 		// --- SQL Injection ---
+		// SQL reaches the database through query parameters and bodies —
+		// never through an opaque bearer cookie or a User-Agent string, so
+		// SQLi patterns are scoped away from headers. Unscoped, the bare
+		// "--" alternative matched inside base64url tokens: a ~400-char
+		// cookie holding two JWTs contains "--" with probability ~9%, which
+		// in ModeBlock 403'd roughly one session in ten at random (issue #10).
 		{
-			Name:           "SQLi_Basic",
-			Regex:          regexp.MustCompile(`(?i)(union\s+select|drop\s+table|insert\s+into|--|;--|'\s*or\s*'1'\s*=\s*'1|xp_cmdshell|exec\s*\(|cast\s*\(|convert\s*\(|char\s*\(|nchar\s*\(|varchar\s*\(|0x[0-9a-fA-F]{4,})`),
+			Name: "SQLi_Basic",
+			// "--" only counts when it terminates a statement (followed by
+			// whitespace or end of input), the way SQLi_Comment already
+			// requires — never inside a hyphenated slug or token. "0x..."
+			// must not start mid-word, so hex inside base64 text is ignored.
+			Regex:          regexp.MustCompile(`(?i)(union\s+select|drop\s+table|insert\s+into|--(?:\s|$)|;--|'\s*or\s*'1'\s*=\s*'1|xp_cmdshell|exec\s*\(|cast\s*\(|convert\s*\(|char\s*\(|nchar\s*\(|varchar\s*\(|(?:^|\W)0x[0-9a-fA-F]{4,})`),
 			ThreatType:     sentinel.ThreatSQLi,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 80,
+			Locations:      []string{"query", "body"},
 		},
 		{
 			Name:           "SQLi_Blind",
@@ -68,6 +79,7 @@ func init() {
 			ThreatType:     sentinel.ThreatSQLi,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 75,
+			Locations:      []string{"query", "body"},
 		},
 		{
 			Name:           "SQLi_Comment",
@@ -75,6 +87,7 @@ func init() {
 			ThreatType:     sentinel.ThreatSQLi,
 			BaseSeverity:   sentinel.SeverityMedium,
 			BaseConfidence: 50,
+			Locations:      []string{"query", "body"},
 		},
 		{
 			Name:           "SQLi_Stacked",
@@ -82,15 +95,23 @@ func init() {
 			ThreatType:     sentinel.ThreatSQLi,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 85,
+			Locations:      []string{"query", "body"},
 		},
 
 		// --- Cross-Site Scripting (XSS) ---
+		// XSS is the one family that legitimately scans headers: an app that
+		// reflects the Referer unescaped is exploitable through it, and
+		// markup never occurs naturally in header values the way "--" or
+		// dotted numbers do. Locations are still explicit — every pattern in
+		// this set must declare where it applies, so a new pattern can't
+		// silently inherit scan-everything (issue #10).
 		{
 			Name:           "XSS_Basic",
 			Regex:          regexp.MustCompile(`(?i)(<script[^>]*>|javascript\s*:|vbscript\s*:|onload\s*=|onerror\s*=|onclick\s*=|onmouseover\s*=|onfocus\s*=|onblur\s*=|eval\s*\(|document\.cookie|document\.write|window\.location)`),
 			ThreatType:     sentinel.ThreatXSS,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 80,
+			Locations:      []string{"path", "query", "header", "body"},
 		},
 		{
 			Name:           "XSS_Encoded",
@@ -98,6 +119,7 @@ func init() {
 			ThreatType:     sentinel.ThreatXSS,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 85,
+			Locations:      []string{"path", "query", "header", "body"},
 		},
 		{
 			Name:           "XSS_SVG",
@@ -105,6 +127,7 @@ func init() {
 			ThreatType:     sentinel.ThreatXSS,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 75,
+			Locations:      []string{"path", "query", "header", "body"},
 		},
 
 		// --- Path Traversal ---
@@ -114,6 +137,7 @@ func init() {
 			ThreatType:     sentinel.ThreatPathTraversal,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 85,
+			Locations:      []string{"path", "query", "body"},
 		},
 
 		// --- Command Injection ---
@@ -123,6 +147,7 @@ func init() {
 			ThreatType:     sentinel.ThreatCommandInjection,
 			BaseSeverity:   sentinel.SeverityCritical,
 			BaseConfidence: 85,
+			Locations:      []string{"query", "body"},
 		},
 
 		// --- SSRF ---
