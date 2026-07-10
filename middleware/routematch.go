@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"path"
 	"strings"
@@ -63,8 +65,48 @@ func splitPathSegments(p string) []string {
 	return strings.Split(p, "/")
 }
 
+// ErrUnsupportedPattern is wrapped by ValidateRoutePattern errors for
+// patterns RouteMatcher would drop at construction.
+var ErrUnsupportedPattern = errors.New("unsupported route pattern")
+
+// ValidateRoutePattern reports whether a route pattern is one RouteMatcher
+// supports. It returns nil for exact paths, trailing-wildcard prefixes,
+// segment globs, and globstar patterns, and a descriptive error (wrapping
+// ErrUnsupportedPattern) for anything NewRouteMatcher would warn about and
+// drop. Use it in config validation or your own tests to catch dead
+// exclusion entries before they reach production.
+func ValidateRoutePattern(p string) error {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return fmt.Errorf("%w: empty pattern", ErrUnsupportedPattern)
+	}
+	if !strings.ContainsAny(p, "*?[") {
+		return nil
+	}
+	if strings.HasSuffix(p, "/**") {
+		base := strings.TrimSuffix(p, "/**")
+		if strings.Contains(base, "**") {
+			return fmt.Errorf("%w: %q — \"**\" is only supported at the end of a pattern", ErrUnsupportedPattern, p)
+		}
+		for _, seg := range splitPathSegments(base) {
+			if _, err := path.Match(seg, "x"); err != nil {
+				return fmt.Errorf("%w: %q — segment %q is not a valid glob (%v)", ErrUnsupportedPattern, p, seg, err)
+			}
+		}
+		return nil
+	}
+	if strings.Contains(p, "**") {
+		return fmt.Errorf("%w: %q — \"**\" is only supported at the end of a pattern", ErrUnsupportedPattern, p)
+	}
+	if _, err := path.Match(p, "/"); err != nil {
+		return fmt.Errorf("%w: %q is not a valid glob (%v)", ErrUnsupportedPattern, p, err)
+	}
+	return nil
+}
+
 // NewRouteMatcher compiles a pattern list. Invalid or unsupported patterns
-// are dropped with a warning rather than matching nothing silently.
+// (anything ValidateRoutePattern rejects) are dropped with a warning rather
+// than matching nothing silently.
 func NewRouteMatcher(patterns []string) *RouteMatcher {
 	m := &RouteMatcher{exact: make(map[string]struct{}, len(patterns))}
 	for _, p := range patterns {
@@ -72,58 +114,35 @@ func NewRouteMatcher(patterns []string) *RouteMatcher {
 		if p == "" {
 			continue
 		}
-		hasWildcard := strings.ContainsAny(p, "*?[")
+		if err := ValidateRoutePattern(p); err != nil {
+			log.Printf("[sentinel] %v — entry ignored", err)
+			continue
+		}
 
 		switch {
-		case !hasWildcard:
+		case !strings.ContainsAny(p, "*?["):
 			m.exact[p] = struct{}{}
 
 		case strings.HasSuffix(p, "/**"):
 			base := strings.TrimSuffix(p, "/**")
-			switch {
-			case strings.Contains(base, "**"):
-				log.Printf("[sentinel] route pattern %q: \"**\" is only supported at the end of a pattern — entry ignored", p)
-			case !strings.ContainsAny(base, "*?["):
+			if !strings.ContainsAny(base, "*?[") {
 				// Plain subtree — cheap prefix compare.
 				m.prefixes = append(m.prefixes, base+"/")
-			default:
-				// Wildcards before the globstar ("/api/apps/*/products/**"):
-				// a literal prefix can never match these, so compile a
-				// segment matcher instead (issue #12).
-				parts := splitPathSegments(base)
-				if !validSegments(p, parts) {
-					continue
-				}
-				m.segments = append(m.segments, segmentPattern{parts: parts, globstar: true})
+				continue
 			}
-
-		case strings.Contains(p, "**"):
-			log.Printf("[sentinel] route pattern %q: \"**\" is only supported at the end of a pattern — entry ignored", p)
+			// Wildcards before the globstar ("/api/apps/*/products/**"):
+			// a literal prefix can never match these, so compile a
+			// segment matcher instead (issue #12).
+			m.segments = append(m.segments, segmentPattern{parts: splitPathSegments(base), globstar: true})
 
 		case strings.HasSuffix(p, "/*") && strings.Count(p, "*") == 1 && !strings.ContainsAny(strings.TrimSuffix(p, "/*"), "*?["):
 			m.prefixes = append(m.prefixes, strings.TrimSuffix(p, "*"))
 
 		default:
-			if _, err := path.Match(p, "/"); err != nil {
-				log.Printf("[sentinel] route pattern %q is not a valid glob (%v) — entry ignored", p, err)
-				continue
-			}
 			m.globs = append(m.globs, p)
 		}
 	}
 	return m
-}
-
-// validSegments verifies every segment of a globstar pattern compiles as a
-// glob, logging and rejecting the whole entry otherwise.
-func validSegments(pattern string, parts []string) bool {
-	for _, seg := range parts {
-		if _, err := path.Match(seg, "x"); err != nil {
-			log.Printf("[sentinel] route pattern %q: segment %q is not a valid glob (%v) — entry ignored", pattern, seg, err)
-			return false
-		}
-	}
-	return true
 }
 
 // Matches reports whether the request path matches any pattern.
