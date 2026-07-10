@@ -2,6 +2,72 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.2.0] - 2026-07-10
+
+Issues #7, #8, #10, and #12 shared one failure mode: configuration that
+compiles, reads as correct, and silently does nothing — discovered only as a
+403 in production. v2.2.0 makes that class of bug detectable before deploy.
+
+### Added
+
+- **`sentinel.ValidateConfig(config) []ConfigIssue`** — inspects a config
+  for entries that would be silently ignored or would silently disable a
+  feature. Never rejects anything; it reports. Each `ConfigIssue` carries a
+  severity (`IssueError` = a feature is dead or a control is disabled;
+  `IssueWarning` = works but probably not intended), the config field, and
+  a message explaining the runtime consequence. Checks cover:
+  - unknown / unimplemented `Storage.Driver` values (silent fallback to
+    in-memory storage — including the exported-but-unimplemented `MySQL`)
+  - route patterns in `WAF.ExcludeRoutes`, `RateLimit.ExcludeRoutes`, and
+    `RateLimit.ByRoute` keys that the matcher would drop (interior `**`,
+    malformed globs) or that can never match (no leading `/`)
+  - `WAF.TrustedProxies` entries that parse as neither IP nor CIDR
+    (silently dropped today)
+  - custom WAF rules: non-compiling regexes (silently dropped at mount),
+    empty patterns (match **every** request — catastrophic in block mode),
+    duplicate IDs (later rule silently replaces the earlier), and
+    `AppliesTo` locations outside path/query/header/body (silently never
+    scanned)
+  - rate limiting enabled with no limits, `ByUser` without a
+    `UserIDExtractor`, limits with zero requests or windows
+  - AuthShield enabled without a `LoginRoute`; CAPTCHA tier unreachable
+    because `CAPTCHAThreshold >= MaxFailedAttempts`
+  - multiple CAPTCHA providers configured (only the first by precedence is
+    used)
+  - alert sinks missing their credentials (Slack/webhook URL, SMTP host,
+    recipients, PagerDuty integration key — all silently skipped today)
+  - `AIConfig` with a missing API key or unknown provider (silently
+    disabled today)
+  - IP reputation enabled without an AbuseIPDB key (checks silently
+    return nothing)
+  - insecure default dashboard credentials (warning; still fatal in
+    release mode)
+- **Mount / MountE run `ValidateConfig` automatically** and log each
+  finding at startup — dead config is now visible in the boot log instead
+  of surfacing as a 403 weeks later. Findings are never fatal; to gate a
+  deploy, call `ValidateConfig` yourself and fail on `IssueError`.
+- **`sentinel.NewRouteMatcher` / `sentinel.ValidateRoutePattern`
+  re-exports** — assert your concrete production paths against your
+  exclusion patterns in your own test suite (the workaround the #12
+  reporter built by hand):
+
+  ```go
+  m := sentinel.NewRouteMatcher(cfg.WAF.ExcludeRoutes)
+  if !m.Matches("/v1/payments/collect") {
+      t.Fatal("payments endpoint is not excluded from the WAF")
+  }
+  ```
+
+- **`middleware.ValidateRoutePattern(pattern) error`** — the single source
+  of truth for pattern support, shared by `NewRouteMatcher` (which still
+  warns and drops) and `ValidateConfig`. Returns errors wrapping the new
+  `middleware.ErrUnsupportedPattern`.
+
+### Compatibility
+
+- No breaking changes. Zero-config `Mount` now logs two warnings about the
+  built-in default credentials in dev mode — intended.
+
 ## [2.1.2] - 2026-07-10
 
 Fixes issue [#12](https://github.com/MUKE-coder/sentinel/issues/12): the

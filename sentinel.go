@@ -77,6 +77,15 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 		log.Printf("[sentinel] WARNING: Storage.Driver not set — security data (threats, blocked IPs, audit logs) goes to SQLite file %q, NOT the *gorm.DB you passed (that is only used for audit-log capture). Set Storage explicitly to silence this warning.", config.Storage.DSN)
 	}
 
+	// Surface config that compiles but silently does nothing — dead route
+	// patterns, providers missing their credentials, unreachable tiers.
+	// Findings are logged, never fatal: Mount still accepts everything it
+	// always accepted. Call sentinel.ValidateConfig yourself to gate a
+	// deploy on IssueError findings.
+	for _, issue := range ValidateConfig(config) {
+		log.Printf("[sentinel] config %s", issue)
+	}
+
 	// Refuse to start with built-in default credentials in release mode unless
 	// the operator has explicitly opted in. This stops zero-config deployments
 	// from shipping with forgeable admin tokens and a known password.
