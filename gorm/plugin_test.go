@@ -2,6 +2,7 @@ package sentinelgorm_test
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -264,5 +265,98 @@ func TestPlugin_DisabledAudit(t *testing.T) {
 
 	if collector.count() != 0 {
 		t.Errorf("expected 0 audit logs when disabled, got %d", collector.count())
+	}
+}
+
+// Models for the has-many regression test (issue #15).
+type testOrder struct {
+	ID    uint       `gorm:"primaryKey" json:"id"`
+	Ref   string     `json:"ref"`
+	Items []testItem `gorm:"foreignKey:OrderID" json:"items"`
+}
+
+func (testOrder) TableName() string { return "test_orders" }
+
+type testItem struct {
+	ID      uint   `gorm:"primaryKey" json:"id"`
+	OrderID uint   `json:"order_id"`
+	SKU     string `json:"sku"`
+}
+
+func (testItem) TableName() string { return "test_items" }
+
+// Regression test for issue #15: creating a record with a has-many
+// association makes GORM re-invoke the create callbacks for the association
+// slice during saveAssociations. extractPrimaryKey called reflect field
+// access on that slice value and panicked, turning every has-many create
+// into a 500.
+func TestPlugin_HasManyCreateDoesNotPanic(t *testing.T) {
+	db, _, collector := setupTest(t)
+	if err := db.AutoMigrate(&testOrder{}, &testItem{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	order := testOrder{Ref: "ord-1", Items: []testItem{{SKU: "a"}, {SKU: "b"}}}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatalf("has-many create failed: %v", err)
+	}
+
+	// Both the parent and the association batch must be persisted.
+	var itemCount int64
+	db.Model(&testItem{}).Count(&itemCount)
+	if itemCount != 2 {
+		t.Errorf("expected 2 items persisted, got %d", itemCount)
+	}
+
+	// Audit logs must be emitted for the creates (parent + association
+	// slice), and none of them may have crashed the pipeline.
+	time.Sleep(100 * time.Millisecond)
+	creates := 0
+	for _, al := range collector.all() {
+		if al.Action == "CREATE" {
+			creates++
+		}
+	}
+	if creates < 2 {
+		t.Errorf("expected >=2 CREATE audit logs (order + items), got %d", creates)
+	}
+}
+
+// Top-level batch creates hand the callback a slice too; the audit log must
+// carry the batch's IDs rather than panicking.
+func TestPlugin_BatchCreateAuditsSliceIDs(t *testing.T) {
+	db, _, collector := setupTest(t)
+
+	users := []testUser{{Name: "a"}, {Name: "b"}, {Name: "c"}}
+	if err := db.Create(&users).Error; err != nil {
+		t.Fatalf("batch create failed: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	al := collector.last()
+	if al == nil {
+		t.Fatal("expected an audit log for the batch create")
+	}
+	if al.Action != "CREATE" {
+		t.Fatalf("expected CREATE, got %s", al.Action)
+	}
+	if !strings.Contains(al.ResourceID, ",") {
+		t.Errorf("expected comma-joined batch IDs in ResourceID, got %q", al.ResourceID)
+	}
+	if al.After == nil {
+		t.Error("expected After payload for batch create (wrapped records)")
+	}
+}
+
+// Map-based creates have no struct value at all; the callback must simply
+// skip PK extraction instead of panicking.
+func TestPlugin_MapCreateDoesNotPanic(t *testing.T) {
+	db, _, _ := setupTest(t)
+
+	err := db.Model(&testUser{}).Create(map[string]interface{}{
+		"name": "via-map", "email": "m@x.y",
+	}).Error
+	if err != nil {
+		t.Fatalf("map create failed: %v", err)
 	}
 }
