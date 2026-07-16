@@ -2,6 +2,32 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.2.1] - 2026-07-16
+
+Fixes issue [#15](https://github.com/MUKE-coder/sentinel/issues/15): the GORM
+audit plugin panicked on has-many and batch creates.
+
+### 🔥 Fix
+
+- **GORM plugin no longer panics on slice creates** (#15). When a record is
+  created with a has-many association (`db.Create(&order)` where
+  `order.Items` is a `[]Item`), GORM re-invokes the create callbacks for the
+  association slice during `saveAssociations` — and `extractPrimaryKey` did
+  a reflect field access that is only valid on structs, panicking with
+  `reflect: call of reflect.Value.Field on slice Value`. Every has-many or
+  batch create became a 500. Primary-key extraction is now kind-aware:
+  - structs behave as before;
+  - slices/arrays yield a comma-joined ID list (capped at 10, then
+    `(+N more)`), so batch audit logs carry the batch's IDs;
+  - pointers are dereferenced; map-based creates and other kinds safely
+    yield an empty ResourceID instead of panicking.
+- **Batch audit payloads are no longer dropped.** `modelToJSON` only handled
+  JSON objects; slice payloads now wrap as `{"records": [...]}` so the audit
+  log captures what was created.
+- **All plugin callbacks are panic-guarded.** Auditing must never break the
+  write it audits: a future bug in any Sentinel GORM callback is now
+  recovered and logged instead of failing the host application's request.
+
 ## [2.2.0] - 2026-07-10
 
 Issues #7, #8, #10, and #12 shared one failure mode: configuration that

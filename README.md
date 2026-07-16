@@ -3,7 +3,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
-[![Release](https://img.shields.io/badge/Release-v2.2.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Release](https://img.shields.io/badge/Release-v2.2.1-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
 [![Tests](https://img.shields.io/badge/Tests-17%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
 [![Dashboard Pages](https://img.shields.io/badge/Dashboard-13%20pages-purple)](https://github.com/MUKE-coder/sentinel)
@@ -19,6 +19,10 @@ sentinel.Mount(r, nil, sentinel.Config{})
 r.Run(":8080")
 // Dashboard → http://localhost:8080/sentinel/ui
 ```
+
+## What's new in v2.2.1
+
+- **GORM plugin no longer panics on has-many / batch creates** (#15) — `db.Create(&order)` with a `[]Item` association handed the audit callback a slice, and primary-key extraction did a struct-only reflect access → panic → 500. Extraction is now kind-aware (slices audit a comma-joined ID list, maps skip safely), batch payloads are captured as `{"records": [...]}`, and every plugin callback is panic-guarded so auditing can never break the write it audits.
 
 ## What's new in v2.2.0
 

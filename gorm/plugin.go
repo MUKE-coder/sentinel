@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -143,6 +145,7 @@ func (p *Plugin) Initialize(db *gorm.DB) error {
 
 // beforeUpdate captures the record state before an update for audit diffing.
 func (p *Plugin) beforeUpdate(db *gorm.DB) {
+	defer recoverCallbackPanic()
 	if db.Statement == nil || db.Statement.Context == nil {
 		return
 	}
@@ -170,6 +173,7 @@ func (p *Plugin) beforeUpdate(db *gorm.DB) {
 
 // beforeDelete captures the record state before deletion.
 func (p *Plugin) beforeDelete(db *gorm.DB) {
+	defer recoverCallbackPanic()
 	if db.Statement == nil || db.Statement.Context == nil {
 		return
 	}
@@ -190,6 +194,7 @@ func (p *Plugin) beforeDelete(db *gorm.DB) {
 
 // afterCreate emits an audit log for record creation.
 func (p *Plugin) afterCreate(db *gorm.DB) {
+	defer recoverCallbackPanic()
 	if db.Error != nil || db.Statement == nil {
 		return
 	}
@@ -223,6 +228,7 @@ func (p *Plugin) afterCreate(db *gorm.DB) {
 
 // afterUpdate emits an audit log for record updates.
 func (p *Plugin) afterUpdate(db *gorm.DB) {
+	defer recoverCallbackPanic()
 	if db.Error != nil || db.Statement == nil {
 		return
 	}
@@ -263,6 +269,7 @@ func (p *Plugin) afterUpdate(db *gorm.DB) {
 
 // afterDelete emits an audit log for record deletion.
 func (p *Plugin) afterDelete(db *gorm.DB) {
+	defer recoverCallbackPanic()
 	if db.Error != nil || db.Statement == nil {
 		return
 	}
@@ -299,6 +306,7 @@ func (p *Plugin) afterDelete(db *gorm.DB) {
 
 // afterQuery implements query shield: N+1 detection, slow query flags, no-WHERE detection.
 func (p *Plugin) afterQuery(db *gorm.DB) {
+	defer recoverCallbackPanic()
 	if db.Statement == nil {
 		return
 	}
@@ -400,13 +408,61 @@ func extractPrimaryKey(db *gorm.DB) string {
 	if db.Statement.Schema == nil {
 		return ""
 	}
-	for _, field := range db.Statement.Schema.PrimaryFields {
-		val, isZero := field.ValueOf(db.Statement.Context, db.Statement.ReflectValue)
-		if !isZero {
-			return fmt.Sprintf("%v", val)
+	return primaryKeyOf(db, db.Statement.ReflectValue)
+}
+
+// maxAuditIDs bounds how many primary keys a batch create records in one
+// audit log's ResourceID before summarizing the rest.
+const maxAuditIDs = 10
+
+// primaryKeyOf reads the primary key(s) from a reflect value of any shape.
+// GORM hands the create callbacks a struct for single-record creates but a
+// slice during batch creates and has-many saveAssociations — and
+// schema.Field.ValueOf does a reflect field access that panics on anything
+// but a struct, turning every has-many create into a 500 (issue #15).
+// Slices yield a comma-joined ID list; unsupported kinds (e.g. map creates)
+// yield "".
+func primaryKeyOf(db *gorm.DB, rv reflect.Value) string {
+	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return ""
 		}
+		rv = rv.Elem()
 	}
-	return ""
+
+	switch rv.Kind() {
+	case reflect.Struct:
+		for _, field := range db.Statement.Schema.PrimaryFields {
+			val, isZero := field.ValueOf(db.Statement.Context, rv)
+			if !isZero {
+				return fmt.Sprintf("%v", val)
+			}
+		}
+		return ""
+	case reflect.Slice, reflect.Array:
+		var ids []string
+		n := rv.Len()
+		for i := 0; i < n && len(ids) < maxAuditIDs; i++ {
+			if id := primaryKeyOf(db, rv.Index(i)); id != "" {
+				ids = append(ids, id)
+			}
+		}
+		if n > maxAuditIDs {
+			ids = append(ids, fmt.Sprintf("(+%d more)", n-maxAuditIDs))
+		}
+		return strings.Join(ids, ",")
+	default:
+		return ""
+	}
+}
+
+// recoverCallbackPanic keeps a bug in an audit callback from failing the
+// host application's request — auditing must never break the write it is
+// auditing. Recovered panics are logged so they still surface.
+func recoverCallbackPanic() {
+	if r := recover(); r != nil {
+		log.Printf("[sentinel] gorm plugin: recovered from callback panic: %v", r)
+	}
 }
 
 func modelToJSON(model interface{}) sentinel.JSONMap {
@@ -419,7 +475,14 @@ func modelToJSON(model interface{}) sentinel.JSONMap {
 	}
 	var m sentinel.JSONMap
 	if err := json.Unmarshal(data, &m); err != nil {
-		return nil
+		// Not a JSON object — batch creates and has-many associations hand
+		// the callback a slice. Wrap it so the audit log still captures the
+		// records instead of silently dropping the payload.
+		var records []interface{}
+		if err := json.Unmarshal(data, &records); err != nil {
+			return nil
+		}
+		return sentinel.JSONMap{"records": records}
 	}
 	return m
 }
