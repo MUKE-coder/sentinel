@@ -26,7 +26,7 @@ export default function AuditLogging() {
         faqs={[
           {
             question: 'What is the Sentinel GORM audit logging plugin?',
-            answer: 'The Sentinel GORM audit plugin is an optional package that automatically tracks every database mutation through GORM callbacks. It records creates, updates, and deletes as immutable audit log entries with full user attribution, flowing through an async pipeline.',
+            answer: 'The Sentinel GORM audit plugin is an optional package that automatically tracks every database mutation through GORM callbacks. It records creates, updates, and deletes as audit log entries with full user attribution, flowing through an async pipeline. Sentinel\'s API offers no way to edit or delete an entry; entries are pruned after Storage.AuditRetentionDays (default 365).',
           },
           {
             question: 'What database operations does the Sentinel audit plugin track?',
@@ -52,7 +52,7 @@ export default function AuditLogging() {
       <h1>Audit Logging</h1>
       <p>
         Sentinel includes a GORM plugin that automatically tracks every database mutation —
-        creates, updates, and deletes — and records them as immutable audit log entries. Every
+        creates, updates, and deletes — and records them as append-only audit log entries. Every
         change captures <em>who</em> made it, <em>what</em> changed (including before/after state
         for updates), and <em>when</em> it happened. Audit entries flow through the Sentinel
         pipeline asynchronously, so your application code is never blocked by audit writes.
@@ -587,6 +587,96 @@ func main() {
     r.Run(":8080")
 }`}
       />
+
+      {/* ------------------------------------------------------------------ */}
+      {/*  SENTINEL'S OWN ENTRIES                                            */}
+      {/* ------------------------------------------------------------------ */}
+
+      <h2 id="sentinel-entries">Dashboard Actions and Logins</h2>
+      <p>
+        Since v2.3.0 Sentinel also audits itself, with no GORM plugin required. Every change made
+        through the dashboard is recorded with the dashboard user as actor (role{' '}
+        <code>sentinel_admin</code>), the client IP, before and after state where it applies, and
+        whether it succeeded — so nobody can unblock an attacker or switch the WAF to log-only
+        without a trace.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Resource</th>
+            <th>Actions</th>
+            <th>Recorded when</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>auth</code></td>
+            <td><code>LOGIN</code></td>
+            <td>A dashboard login attempt, or a login to your app observed by AuthShield (success or failure, with the username tried).</td>
+          </tr>
+          <tr>
+            <td><code>sentinel.ip_block</code></td>
+            <td><code>CREATE</code>, <code>DELETE</code></td>
+            <td>An IP or actor is blocked or unblocked.</td>
+          </tr>
+          <tr>
+            <td><code>sentinel.waf_config</code></td>
+            <td><code>UPDATE</code></td>
+            <td>The WAF mode or rule sensitivity changes.</td>
+          </tr>
+          <tr>
+            <td><code>sentinel.waf_custom_rule</code></td>
+            <td><code>CREATE</code>, <code>DELETE</code></td>
+            <td>A custom rule is added or removed.</td>
+          </tr>
+          <tr>
+            <td><code>sentinel.rate_limit</code></td>
+            <td><code>UPDATE</code>, <code>DELETE</code></td>
+            <td>Route limits change, or a counter is reset.</td>
+          </tr>
+          <tr>
+            <td><code>sentinel.alert_config</code></td>
+            <td><code>UPDATE</code></td>
+            <td>The alert severity threshold changes.</td>
+          </tr>
+          <tr>
+            <td><code>sentinel.auth_lockout</code></td>
+            <td><code>DELETE</code></td>
+            <td>An AuthShield lockout is lifted.</td>
+          </tr>
+          <tr>
+            <td><code>sentinel.threat</code></td>
+            <td><code>UPDATE</code></td>
+            <td>A threat is resolved or marked as a false positive.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* ------------------------------------------------------------------ */}
+      {/*  RETENTION & INTEGRITY                                             */}
+      {/* ------------------------------------------------------------------ */}
+
+      <h2 id="retention">Retention and Integrity</h2>
+      <ul>
+        <li>
+          <strong>No edits or deletes through Sentinel.</strong> The API and dashboard can only
+          list audit entries; there is no endpoint to change or remove one.
+        </li>
+        <li>
+          <strong>Retention.</strong> Entries are deleted after{' '}
+          <code>Storage.AuditRetentionDays</code> (default 365 — PCI-DSS 10.5.1 requires 12 months).
+          This is separate from <code>RetentionDays</code> (default 90), which covers threats, user
+          activity, and performance data. Before v2.3.0, audit entries were deleted with everything
+          else after 90 days.
+        </li>
+        <li>
+          <strong>Not tamper-evident.</strong> Entries live in the same database as the rest of
+          Sentinel's data, so anyone with direct write access to that database can alter them
+          undetectably. If you need evidentiary integrity, restrict database access and ship entries
+          to an append-only sink as well. A hash-chained audit log is planned.
+        </li>
+      </ul>
 
       {/* ------------------------------------------------------------------ */}
       {/*  DASHBOARD                                                         */}

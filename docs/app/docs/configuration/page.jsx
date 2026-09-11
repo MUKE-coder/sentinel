@@ -29,7 +29,7 @@ export default function Configuration() {
           },
           {
             q: 'What storage backends does Sentinel support?',
-            a: 'Sentinel supports four storage backends: SQLite (pure Go, no CGo, recommended for most deployments), in-memory (for development and testing), PostgreSQL (for high-availability production), and MySQL/MariaDB. SQLite is the default driver.',
+            a: 'Sentinel ships three storage backends: SQLite (the default — pure Go, no CGo, a sentinel.db file), PostgreSQL (recommended for production, and required for IP blocks to reach every replica), and in-memory (development and tests only — everything is lost on restart). A MySQL constant exists but is not implemented: selecting it falls back to in-memory storage, and ValidateConfig reports it as an error.',
           },
           {
             q: 'How do I enable the WAF in Sentinel?',
@@ -37,7 +37,7 @@ export default function Configuration() {
           },
           {
             q: 'How do I set up AI analysis in Sentinel?',
-            a: 'Configure AI by setting the AI field with a provider (sentinel.Claude, sentinel.OpenAI, or sentinel.Gemini), your API key, and optionally a model override. Enable DailySummary for automated security reports. The AI field is a pointer; leave it nil to disable.',
+            a: 'Configure AI by setting the AI field with a provider (sentinel.Claude, sentinel.OpenAI, or sentinel.Gemini), your API key, and optionally a model override. AI runs only when someone uses an AI feature in the dashboard — nothing is sent on a schedule. The AI field is a pointer; leave it nil to disable.',
           },
           {
             q: 'How do I configure Sentinel alerts?',
@@ -208,10 +208,9 @@ func main() {
         },
 
         AI: &sentinel.AIConfig{
-            Provider:     sentinel.Claude,
-            APIKey:       "your-anthropic-api-key",
-            Model:        "claude-sonnet-4-20250514",
-            DailySummary: true,
+            Provider: sentinel.Claude,
+            APIKey:   "your-anthropic-api-key",
+            Model:    "claude-sonnet-4-20250514",
         },
 
         UserExtractor: func(c *gin.Context) *sentinel.UserContext {
@@ -353,19 +352,25 @@ Dashboard: sentinel.DashboardConfig{
             <td><code>Driver</code></td>
             <td><code>StorageDriver</code></td>
             <td><code>sentinel.SQLite</code></td>
-            <td>Storage backend. Options: <code>sentinel.SQLite</code>, <code>sentinel.Memory</code>, <code>sentinel.Postgres</code>, <code>sentinel.MySQL</code>.</td>
+            <td>Storage backend. Options: <code>sentinel.SQLite</code>, <code>sentinel.Postgres</code>, <code>sentinel.Memory</code>.</td>
           </tr>
           <tr>
             <td><code>DSN</code></td>
             <td><code>string</code></td>
             <td><code>sentinel.db</code></td>
-            <td>Data source name. For SQLite, this is a file path. For Postgres/MySQL, a full connection string.</td>
+            <td>Data source name. For SQLite, this is a file path. For Postgres, a full connection string.</td>
           </tr>
           <tr>
             <td><code>RetentionDays</code></td>
             <td><code>int</code></td>
             <td><code>90</code></td>
-            <td>Number of days to retain security events before automatic cleanup.</td>
+            <td>Days to keep threat events, user activity, and performance metrics before the hourly cleanup deletes them. Audit logs are not affected.</td>
+          </tr>
+          <tr>
+            <td><code>AuditRetentionDays</code></td>
+            <td><code>int</code></td>
+            <td><code>365</code></td>
+            <td>Days to keep audit log entries. Separate from <code>RetentionDays</code> because audit history is evidence: PCI-DSS 10.5.1 requires 12 months. <code>ValidateConfig</code> warns below 365. (v2.3.0+)</td>
           </tr>
           <tr>
             <td><code>MaxOpenConns</code></td>
@@ -395,22 +400,22 @@ Dashboard: sentinel.DashboardConfig{
           <tr>
             <td>SQLite</td>
             <td><code>sentinel.SQLite</code></td>
-            <td>Pure Go (no CGo). Recommended for most deployments. Data persists to a file.</td>
-          </tr>
-          <tr>
-            <td>Memory</td>
-            <td><code>sentinel.Memory</code></td>
-            <td>In-memory store. No persistence — data is lost on restart. Useful for testing.</td>
+            <td>The default. Pure Go (no CGo); data persists to a file. In containers, put the file on a persistent volume — an ephemeral filesystem loses it on every deploy.</td>
           </tr>
           <tr>
             <td>Postgres</td>
             <td><code>sentinel.Postgres</code></td>
-            <td>PostgreSQL backend for high-availability production deployments.</td>
+            <td>Recommended for production. Required for IP blocks to reach every replica (each instance re-reads the block list every 30 seconds).</td>
+          </tr>
+          <tr>
+            <td>Memory</td>
+            <td><code>sentinel.Memory</code></td>
+            <td>Development and tests only. Everything is lost on restart, and compliance reports are refused in release mode (HTTP 409) because they would cover only the time since the last start.</td>
           </tr>
           <tr>
             <td>MySQL</td>
             <td><code>sentinel.MySQL</code></td>
-            <td>MySQL/MariaDB backend.</td>
+            <td><strong>Not implemented.</strong> Selecting it silently falls back to in-memory storage; <code>ValidateConfig</code> reports it as an error.</td>
           </tr>
         </tbody>
       </table>
@@ -482,8 +487,8 @@ Storage: sentinel.StorageConfig{
           <tr>
             <td><code>Rules</code></td>
             <td><code>RuleSet</code></td>
-            <td>All <code>RuleStrict</code></td>
-            <td>Per-category sensitivity levels for built-in detection rules.</td>
+            <td><code>RuleStrict</code>; <code>RuleMedium</code> for SSRF and open redirect</td>
+            <td>Per-category sensitivity levels for built-in detection rules. Enforced since v2.3.0 — see below.</td>
           </tr>
           <tr>
             <td><code>CustomRules</code></td>
@@ -502,6 +507,24 @@ Storage: sentinel.StorageConfig{
             <td><code>[]string</code></td>
             <td><code>nil</code></td>
             <td>IP addresses or CIDR ranges to exclude from WAF inspection.</td>
+          </tr>
+          <tr>
+            <td><code>TrustedProxies</code></td>
+            <td><code>[]string</code></td>
+            <td><code>nil</code></td>
+            <td>IPs or CIDRs of your reverse proxies. <code>X-Forwarded-For</code> / <code>X-Real-IP</code> are honored only when the direct connection comes from one of them, and the chain is read right to left — the first address that isn't one of your proxies is the client. Used by every per-IP feature, not just the WAF. Empty means proxy headers are ignored.</td>
+          </tr>
+          <tr>
+            <td><code>MaxBodyBytes</code></td>
+            <td><code>int64</code></td>
+            <td><code>65536</code></td>
+            <td>How much of each request body the WAF reads and inspects.</td>
+          </tr>
+          <tr>
+            <td><code>RejectOversizedBody</code></td>
+            <td><code>bool</code></td>
+            <td><code>false</code></td>
+            <td>Reject bodies larger than <code>MaxBodyBytes</code> with 413 instead of inspecting only the first part.</td>
           </tr>
         </tbody>
       </table>
@@ -529,7 +552,7 @@ Storage: sentinel.StorageConfig{
           <tr>
             <td>Challenge</td>
             <td><code>sentinel.ModeChallenge</code></td>
-            <td>Presents a challenge to the client before allowing the request through.</td>
+            <td>Rejects the request with HTTP 429, <code>Retry-After: 30</code>, and code <code>WAF_CHALLENGE</code>. There is no interactive challenge page.</td>
           </tr>
         </tbody>
       </table>
@@ -538,8 +561,45 @@ Storage: sentinel.StorageConfig{
       <p>
         Each built-in detection category can have its sensitivity tuned independently. The available
         levels are <code>sentinel.RuleOff</code>, <code>sentinel.RuleLow</code>,{' '}
-        <code>sentinel.RuleMedium</code>, and <code>sentinel.RuleStrict</code>.
+        <code>sentinel.RuleMedium</code>, and <code>sentinel.RuleStrict</code>. Each level keeps the
+        built-in patterns at or above a confidence floor:
       </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Level</th>
+            <th>Patterns kept</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>RuleOff</code></td>
+            <td>None — the category is disabled.</td>
+          </tr>
+          <tr>
+            <td><code>RuleLow</code></td>
+            <td>Only the most precise patterns (confidence ≥ 80).</td>
+          </tr>
+          <tr>
+            <td><code>RuleMedium</code></td>
+            <td>Everything except the noisiest patterns (confidence ≥ 60) — for example the bare SQL-comment pattern is dropped.</td>
+          </tr>
+          <tr>
+            <td><code>RuleStrict</code> (or empty)</td>
+            <td>Every pattern.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <Callout type="info" title="Enforced since v2.3.0">
+        Before v2.3.0 these levels were never read — every pattern ran whatever the config said. The
+        defaults keep every pattern, so a default config detects exactly what it did; a category you
+        had set to <code>RuleOff</code>, <code>RuleLow</code>, or <code>RuleMedium</code> now actually
+        changes detection. An unknown value is enforced as strict and reported by{' '}
+        <code>ValidateConfig</code>. The dashboard can change levels on the running WAF via{' '}
+        <code>PUT /sentinel/api/waf/rules</code>.
+      </Callout>
 
       <table>
         <thead>
@@ -626,7 +686,7 @@ Storage: sentinel.StorageConfig{
           <tr>
             <td><code>AppliesTo</code></td>
             <td><code>[]string</code></td>
-            <td>Which parts of the request to inspect: <code>"path"</code>, <code>"query"</code>, <code>"body"</code>, <code>"headers"</code>.</td>
+            <td>Which parts of the request to inspect: <code>"path"</code>, <code>"query"</code>, <code>"header"</code>, <code>"body"</code>. Empty means all four. Any other value is never scanned and is reported by <code>ValidateConfig</code>.</td>
           </tr>
           <tr>
             <td><code>Severity</code></td>
@@ -636,7 +696,7 @@ Storage: sentinel.StorageConfig{
           <tr>
             <td><code>Action</code></td>
             <td><code>string</code></td>
-            <td>Action to take: <code>"block"</code> or <code>"log"</code>.</td>
+            <td><code>"block"</code> (or empty) lets the WAF mode decide; <code>"log"</code> records matches but never blocks, even in block mode — use it to watch a new rule against real traffic before trusting it. A request that also trips an enforced rule is still blocked. (Enforced since v2.3.0.)</td>
           </tr>
           <tr>
             <td><code>Enabled</code></td>
@@ -690,7 +750,9 @@ Storage: sentinel.StorageConfig{
       <Callout type="success" title="Recommended Rollout Strategy">
         Start with <code>sentinel.ModeLog</code> in production to observe what the WAF detects
         without blocking real traffic. Review the dashboard for false positives, tune rule
-        sensitivities, then switch to <code>sentinel.ModeBlock</code> when confident.
+        sensitivities, then switch to <code>sentinel.ModeBlock</code> when confident. Once in block
+        mode, add new custom rules with <code>Action: "log"</code> first and promote them to{' '}
+        <code>"block"</code> after watching them against real traffic.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
@@ -799,17 +861,17 @@ Storage: sentinel.StorageConfig{
           <tr>
             <td>Sliding Window</td>
             <td><code>sentinel.SlidingWindow</code></td>
-            <td>Default. Provides smooth rate limiting without burst spikes at window boundaries.</td>
+            <td>Default. Counts requests over the window ending now (the previous window's count, weighted by how much of it still overlaps, plus the current one), so twice the limit can't pass in a moment either side of a window boundary. Rejected requests aren't counted.</td>
           </tr>
           <tr>
             <td>Fixed Window</td>
             <td><code>sentinel.FixedWindow</code></td>
-            <td>Simple fixed time windows. Slightly less accurate but lower memory overhead.</td>
+            <td>Consecutive windows starting at a client's first request; the counter resets completely at each boundary, so up to twice the limit can pass across one. Rejected requests count. This was the only behavior before v2.3.0, whatever <code>Strategy</code> said.</td>
           </tr>
           <tr>
             <td>Token Bucket</td>
             <td><code>sentinel.TokenBucket</code></td>
-            <td>Allows short bursts while maintaining an average rate over time.</td>
+            <td>A bucket of <code>Requests</code> tokens refilled at <code>Requests</code> per <code>Window</code>: allows a burst up to the limit, then a steady rate.</td>
           </tr>
         </tbody>
       </table>
@@ -1447,7 +1509,13 @@ Storage: sentinel.StorageConfig{
             <td><code>DailySummary</code></td>
             <td><code>bool</code></td>
             <td><code>false</code></td>
-            <td>When <code>true</code>, generates a daily AI-powered security summary.</td>
+            <td><strong>Deprecated — has no effect.</strong> Nothing runs on a schedule; the daily summary is generated on demand from the dashboard's AI page. <code>ValidateConfig</code> warns when it is set.</td>
+          </tr>
+          <tr>
+            <td><code>MaxCallsPerDay</code></td>
+            <td><code>int64</code></td>
+            <td><code>500</code></td>
+            <td>Caps upstream LLM calls per UTC day across all AI features. Cached responses don't count. <code>0</code> disables the cap.</td>
           </tr>
         </tbody>
       </table>
@@ -1485,9 +1553,8 @@ Storage: sentinel.StorageConfig{
         filename="config.go"
         code={`// Using Anthropic Claude
 AI: &sentinel.AIConfig{
-    Provider:     sentinel.Claude,
-    APIKey:       os.Getenv("ANTHROPIC_API_KEY"),
-    DailySummary: true,
+    Provider: sentinel.Claude,
+    APIKey:   os.Getenv("ANTHROPIC_API_KEY"),
 }
 
 // Using OpenAI
@@ -1516,10 +1583,20 @@ AI: &sentinel.AIConfig{
 
       <h2 id="user-extractor">User Extractor</h2>
       <p>
-        The <code>UserExtractor</code> is a function that extracts authenticated user context from
-        each incoming request. Sentinel uses this information for per-user rate limiting, user-level
-        threat profiling, and audit logging. Return <code>nil</code> for unauthenticated requests.
+        The <code>UserExtractor</code> identifies the authenticated user behind a request. When it
+        is set, Sentinel records one user-activity entry per authenticated request — route pattern,
+        method, status, duration, client IP, and a link to any threat the WAF logged on it. That data
+        drives the dashboard's Users page, the GDPR report's per-user section, and anomaly
+        detection; without an extractor all three stay empty. Return <code>nil</code> for
+        unauthenticated requests.
       </p>
+
+      <Callout type="info" title="It runs after your handler">
+        The extractor is called once the rest of the chain has run, so it can read whatever your auth
+        middleware put on the context (<code>c.Get("user")</code>, JWT claims, and so on). Before
+        v2.3.0 the field was never read. Per-user rate limiting uses the separate{' '}
+        <code>RateLimit.UserIDExtractor</code>.
+      </Callout>
 
       <table>
         <thead>

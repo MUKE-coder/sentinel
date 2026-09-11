@@ -5,14 +5,14 @@ import { FAQSchema, TechArticleSchema, SpeakableSchema } from '@/components/Json
 export const metadata = {
   title: 'Compliance Reports - Sentinel Docs',
   description:
-    'Generate GDPR, PCI-DSS, and SOC 2 compliance reports from your Sentinel security data with JSON export support.',
+    'Generate GDPR, PCI-DSS, and SOC 2 evidence reports from your Sentinel security data, with provenance showing how far the data can be trusted.',
   alternates: {
     canonical: 'https://sentinel-go-sdk.vercel.app/docs/compliance-reports',
   },
   openGraph: {
     title: 'Compliance Reports - Sentinel Docs',
     description:
-      'Generate GDPR, PCI-DSS, and SOC 2 compliance reports from your Sentinel security data with JSON export support.',
+      'Generate GDPR, PCI-DSS, and SOC 2 evidence reports from your Sentinel security data, with provenance showing how far the data can be trusted.',
     url: 'https://sentinel-go-sdk.vercel.app/docs/compliance-reports',
     siteName: 'Sentinel',
     type: 'article',
@@ -26,43 +26,162 @@ export default function ComplianceReports() {
         faqs={[
           {
             question: 'What compliance report types does Sentinel support?',
-            answer: 'Sentinel supports three compliance report types: GDPR (user data access, exports, deletions, and unusual access patterns), PCI-DSS (authentication events, security incidents, blocked threats, and requirements status), and SOC 2 (monitoring evidence, incident response, and access control).',
+            answer: 'Sentinel generates three evidence reports: GDPR (per-user data access, exports, deletions, unusual access), PCI-DSS (authentication events, security incidents, blocked threats over 90 days), and SOC 2 (monitoring evidence, incident response, access control, anomalies). They collect evidence; they do not assess compliance.',
           },
           {
             question: 'How do I generate a GDPR report in Sentinel?',
-            answer: 'Call GET /sentinel/api/reports/gdpr with an optional ?window query parameter (default 720h for 30 days). The report aggregates user data access events, export and deletion counts, and unusual access patterns detected by anomaly detection. No extra configuration is needed.',
+            answer: 'Call GET /sentinel/api/reports/gdpr with an optional ?window query parameter (default 720h for 30 days). The per-user section needs Config.UserExtractor to be set, because that is what records user activity.',
+          },
+          {
+            question: 'Can I trust an empty section in a Sentinel report?',
+            answer: 'Check the provenance block first. Every report says which storage driver produced it, whether that storage survives a restart, how long data is retained, the oldest stored records, and warnings when the data cannot support the report — so an empty section can be told apart from a clean record.',
           },
           {
             question: 'Can Sentinel compliance reports be exported as JSON?',
-            answer: 'Yes. Both the API and the dashboard return reports as JSON. The dashboard includes an Export JSON button that downloads a file named sentinel-<type>-report-<date>.json. Programmatically, pipe the API response through jq to extract the data field.',
-          },
-          {
-            question: 'What data is included in Sentinel compliance reports?',
-            answer: 'Reports aggregate threat events, audit logs, user activity, and access control records from data Sentinel already collects. GDPR reports include per-user summaries, PCI-DSS maps to requirement categories with compliance status, and SOC 2 covers monitoring and incident response.',
+            answer: 'Yes. The API returns reports as JSON, and the dashboard has an Export JSON button that downloads sentinel-<type>-report-<date>.json.',
           },
         ]}
       />
       <TechArticleSchema
         title="Compliance Reports - Sentinel Docs"
-        description="Generate GDPR, PCI-DSS, and SOC 2 compliance reports from your Sentinel security data with JSON export support."
+        description="Generate GDPR, PCI-DSS, and SOC 2 evidence reports from your Sentinel security data, with provenance showing how far the data can be trusted."
         url="https://sentinel-go-sdk.vercel.app/docs/compliance-reports"
       />
       <SpeakableSchema url="https://sentinel-go-sdk.vercel.app/docs/compliance-reports" />
 
       <h1>Compliance Reports</h1>
       <p>
-        Sentinel can generate compliance reports for <strong>GDPR</strong>,{' '}
-        <strong>PCI-DSS</strong>, and <strong>SOC 2</strong> directly from your security data.
-        Each report aggregates threat events, audit logs, user activity, and access control
-        records into a structured document that maps to the requirements of its respective
-        compliance framework. Reports are generated on demand through the API or the dashboard
-        and can be exported as JSON for integration with external compliance tools.
+        Sentinel generates <strong>GDPR</strong>, <strong>PCI-DSS</strong>, and <strong>SOC 2</strong>{' '}
+        reports from the security data it records: threat events, audit logs, user activity, and IP
+        blocks. Reports are generated on demand through the API or the dashboard and returned as JSON.
       </p>
 
-      <Callout type="info" title="No Extra Configuration">
-        Compliance reports are generated from data that Sentinel already collects. There is no
-        separate configuration to enable them. As long as Sentinel is mounted and processing
-        traffic, the report endpoints are available.
+      <Callout type="warning" title="Evidence, not an assessment">
+        These reports collect evidence an auditor will ask for. They do not evaluate compliance — no
+        report computes a requirement status or a pass/fail verdict — and they only contain what
+        Sentinel has recorded. Read each report's <code>provenance</code> block before relying on it.
+      </Callout>
+
+      {/* ------------------------------------------------------------------ */}
+      {/*  DATA SOURCES                                                       */}
+      {/* ------------------------------------------------------------------ */}
+
+      <h2 id="data-sources">Where the Data Comes From</h2>
+      <p>
+        A report section can only be as complete as the component that feeds it. If a feeder isn't
+        configured, its section is empty — and an empty section means <em>no data</em>, not a clean
+        record.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Recorded by</th>
+            <th>Requires</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GDPR <code>user_data_access</code>, SOC 2 <code>total_users</code></td>
+            <td>User activity, one entry per authenticated request</td>
+            <td><code>Config.UserExtractor</code> (v2.3.0+)</td>
+          </tr>
+          <tr>
+            <td>GDPR <code>data_deletions</code></td>
+            <td><code>DELETE</code> audit entries from the GORM plugin</td>
+            <td>Pass your <code>*gorm.DB</code> to <code>Mount</code></td>
+          </tr>
+          <tr>
+            <td>GDPR <code>data_exports</code></td>
+            <td><code>READ</code> audit entries</td>
+            <td>Your application writing them — the GORM plugin records CREATE, UPDATE, and DELETE only</td>
+          </tr>
+          <tr>
+            <td>GDPR <code>unusual_access</code>, SOC 2 <code>anomaly_events</code></td>
+            <td>Anomaly detection</td>
+            <td><code>Anomaly.Enabled</code> and <code>UserExtractor</code></td>
+          </tr>
+          <tr>
+            <td>PCI-DSS <code>auth_events</code></td>
+            <td>Login audit entries (<code>Resource: "auth"</code>) — logins AuthShield observes on your app, and dashboard logins</td>
+            <td><code>AuthShield.Enabled</code> with a <code>LoginRoute</code> for app logins (v2.3.0+)</td>
+          </tr>
+          <tr>
+            <td>PCI-DSS incidents and blocked threats, SOC 2 monitoring evidence</td>
+            <td>Threat events from the WAF, rate limiter, AuthShield, and anomaly detection</td>
+            <td>The WAF or other detectors enabled</td>
+          </tr>
+          <tr>
+            <td>SOC 2 <code>incident_response</code></td>
+            <td>Threats marked resolved in the dashboard</td>
+            <td>Operators triaging threats</td>
+          </tr>
+          <tr>
+            <td>SOC 2 <code>access_control.audit_logs</code></td>
+            <td>Every audit entry, including dashboard actions (v2.3.0+)</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* ------------------------------------------------------------------ */}
+      {/*  PROVENANCE                                                         */}
+      {/* ------------------------------------------------------------------ */}
+
+      <h2 id="provenance">Provenance and Truncation</h2>
+      <p>
+        Every report carries a <code>provenance</code> block (v2.3.0+) describing the data behind it:
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>storage_driver</code></td>
+            <td><code>sqlite</code>, <code>postgres</code>, or <code>memory</code>.</td>
+          </tr>
+          <tr>
+            <td><code>durable</code></td>
+            <td><code>true</code> only for SQLite and Postgres — data that survives a restart.</td>
+          </tr>
+          <tr>
+            <td><code>retention_days</code>, <code>audit_retention_days</code></td>
+            <td>How long threat/activity records and audit entries are kept before deletion.</td>
+          </tr>
+          <tr>
+            <td><code>oldest_threat_event</code>, <code>oldest_audit_entry</code></td>
+            <td>The earliest records in storage.</td>
+          </tr>
+          <tr>
+            <td><code>warnings</code></td>
+            <td>
+              Every reason the data may not support the report: in-memory storage, a window longer
+              than retention, a window that starts before the oldest stored record, an empty store,
+              audit retention under PCI-DSS's 12 months, no <code>UserExtractor</code>, no source of{' '}
+              <code>READ</code> entries.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        List sections are capped (500 to 5,000 rows depending on the section). When a list hits its
+        cap, its name appears in the report's <code>truncated</code> array. Summary counts come from
+        aggregate queries and stay exact either way.
+      </p>
+
+      <Callout type="warning" title="In-memory storage is refused in release mode">
+        With <code>Storage.Driver: sentinel.Memory</code> in <code>gin.ReleaseMode</code>, the report
+        endpoints return <strong>409</strong> with code <code>EPHEMERAL_STORAGE</code>: that data is
+        lost on every restart, so a report would cover only the time since the last deploy while
+        reading as a complete record. Pass <code>?acknowledge_ephemeral=true</code> to generate it
+        anyway.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
@@ -70,41 +189,38 @@ export default function ComplianceReports() {
       {/* ------------------------------------------------------------------ */}
 
       <h2 id="available-reports">Available Reports</h2>
-      <p>
-        Sentinel supports three compliance report types. Each report queries different subsets of
-        stored data and presents metrics aligned with its compliance framework.
-      </p>
-
       <table>
         <thead>
           <tr>
             <th>Report</th>
-            <th>Framework</th>
+            <th>Endpoint</th>
             <th>Time Window</th>
-            <th>Description</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><strong>GDPR</strong></td>
-            <td>General Data Protection Regulation</td>
-            <td>Configurable (default 720h)</td>
-            <td>User data access, exports, deletions, and unusual access patterns.</td>
+            <td><code>GET /sentinel/api/reports/gdpr</code></td>
+            <td><code>?window=</code>, default <code>720h</code></td>
           </tr>
           <tr>
             <td><strong>PCI-DSS</strong></td>
-            <td>Payment Card Industry Data Security Standard</td>
+            <td><code>GET /sentinel/api/reports/pci-dss</code></td>
             <td>Fixed 90 days</td>
-            <td>Authentication events, security incidents, blocked threats, and requirements status.</td>
           </tr>
           <tr>
             <td><strong>SOC 2</strong></td>
-            <td>Service Organization Control 2</td>
-            <td>Configurable (default 720h)</td>
-            <td>Monitoring evidence, incident response, access control, and anomalies.</td>
+            <td><code>GET /sentinel/api/reports/soc2</code></td>
+            <td><code>?window=</code>, default <code>720h</code></td>
           </tr>
         </tbody>
       </table>
+      <p>
+        Every endpoint requires a dashboard token and wraps the report in a{' '}
+        <code>{'{ "data": ... }'}</code> envelope. <code>window</code> takes any Go duration
+        (<code>168h</code>, <code>336h</code>, <code>2160h</code>); an unparseable value falls back to{' '}
+        <code>720h</code>.
+      </p>
 
       {/* ------------------------------------------------------------------ */}
       {/*  GDPR REPORT                                                       */}
@@ -112,87 +228,81 @@ export default function ComplianceReports() {
 
       <h2 id="gdpr-report">GDPR Report</h2>
       <p>
-        The GDPR report provides visibility into how user data is accessed, exported, and deleted
-        within your application. It also surfaces unusual access patterns detected by the anomaly
-        detection engine. This helps demonstrate compliance with GDPR articles related to data
-        subject rights, lawful processing, and breach notification.
+        How user data was accessed, exported, and deleted in the window, plus anomalous access.
       </p>
 
-      <h3>Metrics</h3>
       <table>
         <thead>
           <tr>
-            <th>Metric</th>
-            <th>Description</th>
+            <th>Field</th>
+            <th>Contents</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><code>total_users</code></td>
-            <td>Number of unique users with data access activity in the reporting window.</td>
+            <td><code>user_data_access</code></td>
+            <td>Per user: <code>user_id</code>, <code>routes_accessed</code> (route patterns), <code>access_count</code>, <code>last_access</code>.</td>
           </tr>
           <tr>
-            <td><code>data_access_events</code></td>
-            <td>Total number of data access events across all users.</td>
+            <td><code>data_exports</code></td>
+            <td><code>READ</code> audit entries.</td>
           </tr>
           <tr>
-            <td><code>data_export_events</code></td>
-            <td>Number of data export (READ) audit log entries.</td>
+            <td><code>data_deletions</code></td>
+            <td><code>DELETE</code> audit entries, with the deleted record's before-state.</td>
           </tr>
           <tr>
-            <td><code>data_deletion_events</code></td>
-            <td>Number of data deletion (DELETE) audit log entries.</td>
+            <td><code>unusual_access</code></td>
+            <td><code>AnomalyDetected</code> threat events.</td>
           </tr>
           <tr>
-            <td><code>unusual_access_patterns</code></td>
-            <td>Anomaly-type threat events indicating suspicious data access behavior.</td>
-          </tr>
-          <tr>
-            <td><code>user_data_summary</code></td>
-            <td>Per-user breakdown with user ID, activity count, routes accessed, and last access time.</td>
+            <td><code>summary</code></td>
+            <td><code>total_users</code>, <code>total_data_accesses</code>, <code>total_exports</code>, <code>total_deletions</code>, <code>unusual_access_count</code>.</td>
           </tr>
         </tbody>
       </table>
 
       <CodeBlock
         language="json"
-        filename="GDPR Response"
+        filename="GDPR Response (abridged)"
         showLineNumbers={false}
         code={`{
   "data": {
-    "generated_at": "2025-06-15T10:00:00Z",
-    "window_start": "2025-05-16T10:00:00Z",
-    "window_end": "2025-06-15T10:00:00Z",
-    "total_users": 42,
-    "data_access_events": 1580,
-    "data_export_events": 12,
-    "data_deletion_events": 3,
-    "unusual_access_patterns": [
-      {
-        "id": "te-anom-001",
-        "timestamp": "2025-06-10T03:22:00Z",
-        "ip": "198.51.100.14",
-        "threat_types": ["AnomalyDetected"],
-        "severity": "Medium"
-      }
-    ],
-    "user_data_summary": [
+    "generated_at": "2026-09-11T10:00:00Z",
+    "window_start": "2026-08-12T10:00:00Z",
+    "window_end": "2026-09-11T10:00:00Z",
+    "user_data_access": [
       {
         "user_id": "user-abc123",
-        "activity_count": 87,
-        "routes_accessed": ["/api/users", "/api/profile"],
-        "last_seen": "2025-06-15T09:45:00Z"
+        "routes_accessed": ["/api/profile", "/api/orders/:id"],
+        "access_count": 87,
+        "last_access": "2026-09-11T09:45:00Z"
       }
-    ]
+    ],
+    "data_exports": [],
+    "data_deletions": [ { "action": "DELETE", "resource": "customers", "resource_id": "412", "...": "..." } ],
+    "unusual_access": [],
+    "summary": {
+      "total_users": 42,
+      "total_data_accesses": 1580,
+      "total_exports": 0,
+      "total_deletions": 3,
+      "unusual_access_count": 0
+    },
+    "provenance": {
+      "storage_driver": "sqlite",
+      "durable": true,
+      "retention_days": 90,
+      "audit_retention_days": 365,
+      "oldest_threat_event": "2026-06-14T08:02:11Z",
+      "oldest_audit_entry": "2026-06-14T08:05:40Z",
+      "warnings": [
+        "data_exports lists READ audit entries, which Sentinel's GORM plugin does not record (it records CREATE, UPDATE, and DELETE): the section stays empty unless your application writes READ entries itself."
+      ]
+    }
   }
 }`}
       />
-
-      <Callout type="warning" title="Query Parameter">
-        The GDPR report accepts a <code>?window</code> query parameter to control the reporting
-        period. The default is <code>720h</code> (30 days). Example:{' '}
-        <code>GET /sentinel/api/reports/gdpr?window=2160h</code> for 90 days.
-      </Callout>
 
       {/* ------------------------------------------------------------------ */}
       {/*  PCI-DSS REPORT                                                    */}
@@ -200,74 +310,39 @@ export default function ComplianceReports() {
 
       <h2 id="pci-dss-report">PCI-DSS Report</h2>
       <p>
-        The PCI-DSS report focuses on authentication security, incident tracking, and threat
-        blocking over a fixed 90-day window. It maps to PCI-DSS requirements around access
-        control, monitoring, and incident response. The report includes a requirements status map
-        that indicates whether each relevant PCI-DSS requirement is compliant, partially met, or
-        non-compliant based on your Sentinel configuration and runtime data.
+        Authentication activity, security incidents, and blocked threats over the last 90 days.
       </p>
 
-      <h3>Metrics</h3>
       <table>
         <thead>
           <tr>
-            <th>Metric</th>
-            <th>Description</th>
+            <th>Field</th>
+            <th>Contents</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><code>auth_events_90d</code></td>
-            <td>Total authentication attempts in the last 90 days (success + failure).</td>
-          </tr>
-          <tr>
-            <td><code>failed_logins_90d</code></td>
-            <td>Number of failed login attempts in the last 90 days.</td>
+            <td><code>auth_events</code></td>
+            <td><code>total_attempts</code>, <code>success_count</code>, <code>failure_count</code>, <code>failure_rate</code> (percent), from login audit entries.</td>
           </tr>
           <tr>
             <td><code>security_incidents</code></td>
-            <td>Total security incidents (threat events) detected in the last 90 days.</td>
+            <td>Every threat event in the window, newest first.</td>
           </tr>
           <tr>
             <td><code>blocked_threats</code></td>
-            <td>Number of threats that were actively blocked by the WAF or rate limiter.</td>
+            <td>Threat events Sentinel blocked.</td>
           </tr>
           <tr>
-            <td><code>requirements</code></td>
-            <td>Map of PCI-DSS requirement names to their compliance status: <code>compliant</code>, <code>partial</code>, or <code>non-compliant</code>.</td>
+            <td><code>summary</code></td>
+            <td><code>total_incidents</code>, <code>critical_incidents</code>, <code>high_incidents</code>, <code>blocked_count</code>, <code>unique_attacker_ips</code>.</td>
           </tr>
         </tbody>
       </table>
 
-      <CodeBlock
-        language="json"
-        filename="PCI-DSS Response"
-        showLineNumbers={false}
-        code={`{
-  "data": {
-    "generated_at": "2025-06-15T10:00:00Z",
-    "auth_events_90d": 12450,
-    "failed_logins_90d": 342,
-    "security_incidents": 87,
-    "blocked_threats": 76,
-    "requirements": {
-      "Req 1 - Firewall Configuration": "compliant",
-      "Req 2 - Default Passwords": "compliant",
-      "Req 6 - Secure Systems": "partial",
-      "Req 7 - Access Control": "compliant",
-      "Req 8 - Authentication": "compliant",
-      "Req 10 - Logging & Monitoring": "compliant",
-      "Req 11 - Security Testing": "partial",
-      "Req 12 - Security Policy": "non-compliant"
-    }
-  }
-}`}
-      />
-
-      <Callout type="info" title="Fixed 90-Day Window">
-        The PCI-DSS report always covers the last 90 days. There is no <code>?window</code> query
-        parameter for this endpoint. This aligns with PCI-DSS requirements for quarterly review
-        periods.
+      <Callout type="info" title="Audit retention">
+        PCI-DSS 10.5.1 requires 12 months of audit history. <code>Storage.AuditRetentionDays</code>{' '}
+        defaults to 365; set lower and the report's provenance says so.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
@@ -276,420 +351,110 @@ export default function ComplianceReports() {
 
       <h2 id="soc2-report">SOC 2 Report</h2>
       <p>
-        The SOC 2 report provides evidence for the Trust Services Criteria: security, availability,
-        and confidentiality. It aggregates monitoring evidence, incident response metrics, access
-        control data, and anomaly events into a format suitable for SOC 2 Type II audits.
+        Monitoring, incident-response, and access-control evidence for the window.
       </p>
 
-      <h3>Sections</h3>
-
-      <h4>Monitoring Evidence</h4>
       <table>
         <thead>
           <tr>
             <th>Field</th>
-            <th>Description</th>
+            <th>Contents</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td><code>total_events</code></td>
-            <td>Total number of security events processed during the reporting window.</td>
+            <td><code>monitoring_evidence</code></td>
+            <td><code>total_events_processed</code> (threat events recorded in the window), <code>threat_stats</code> (counts by severity, blocked, unique IPs, top attack types), <code>security_score</code>.</td>
           </tr>
           <tr>
-            <td><code>threats_detected</code></td>
-            <td>Number of threats identified by the detection engine.</td>
+            <td><code>incident_response</code></td>
+            <td>Threat events marked resolved.</td>
           </tr>
           <tr>
-            <td><code>threats_blocked</code></td>
-            <td>Number of threats actively blocked before reaching the application.</td>
+            <td><code>access_control</code></td>
+            <td><code>total_users</code>, <code>audit_logs</code> (every audit entry in the window, including dashboard actions and logins), <code>blocked_ips</code>.</td>
+          </tr>
+          <tr>
+            <td><code>anomaly_events</code></td>
+            <td><code>AnomalyDetected</code> threat events.</td>
+          </tr>
+          <tr>
+            <td><code>summary</code></td>
+            <td><code>total_threats_detected</code>, <code>total_threats_blocked</code>, <code>total_anomalies</code>, <code>total_audit_entries</code>, <code>active_blocked_ips</code>.</td>
           </tr>
         </tbody>
       </table>
 
-      <h4>Incident Response</h4>
-      <table>
-        <thead>
-          <tr>
-            <th>Field</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>total_incidents</code></td>
-            <td>Total number of security incidents recorded.</td>
-          </tr>
-          <tr>
-            <td><code>resolved</code></td>
-            <td>Number of incidents that have been resolved.</td>
-          </tr>
-          <tr>
-            <td><code>avg_response_time</code></td>
-            <td>Average time to resolve an incident (human-readable duration).</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h4>Access Control</h4>
-      <table>
-        <thead>
-          <tr>
-            <th>Field</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>unique_users</code></td>
-            <td>Number of unique users with activity in the reporting window.</td>
-          </tr>
-          <tr>
-            <td><code>auth_events</code></td>
-            <td>Total authentication events (logins, logouts, token refreshes).</td>
-          </tr>
-          <tr>
-            <td><code>ip_blocks_active</code></td>
-            <td>Number of currently active IP blocks.</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <h4>Anomalies</h4>
-      <p>
-        A list of anomaly-type threat events detected during the reporting window. Each anomaly
-        includes the event ID, timestamp, source IP, severity, and threat type details.
-      </p>
-
-      <CodeBlock
-        language="json"
-        filename="SOC 2 Response"
-        showLineNumbers={false}
-        code={`{
-  "data": {
-    "generated_at": "2025-06-15T10:00:00Z",
-    "window_start": "2025-05-16T10:00:00Z",
-    "window_end": "2025-06-15T10:00:00Z",
-    "monitoring_evidence": {
-      "total_events": 58420,
-      "threats_detected": 134,
-      "threats_blocked": 121
-    },
-    "incident_response": {
-      "total_incidents": 134,
-      "resolved": 128,
-      "avg_response_time": "4m32s"
-    },
-    "access_control": {
-      "unique_users": 67,
-      "auth_events": 8930,
-      "ip_blocks_active": 14
-    },
-    "anomalies": [
-      {
-        "id": "te-anom-042",
-        "timestamp": "2025-06-12T18:15:00Z",
-        "ip": "203.0.113.88",
-        "threat_types": ["AnomalyDetected"],
-        "severity": "High"
-      }
-    ]
-  }
-}`}
-      />
-
-      <Callout type="warning" title="Query Parameter">
-        The SOC 2 report accepts a <code>?window</code> query parameter to control the reporting
-        period. The default is <code>720h</code> (30 days). Example:{' '}
-        <code>GET /sentinel/api/reports/soc2?window=2160h</code> for 90 days.
+      <Callout type="info" title="Fixed in v2.2.2">
+        Before v2.2.2 the PCI-DSS <code>blocked_threats</code> list filtered on the wrong field, the
+        SOC 2 blocked count could never exceed 1, and <code>total_events_processed</code> was a
+        meaningless sum. Reports generated by older versions should not be relied on.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
-      {/*  API ENDPOINTS                                                     */}
+      {/*  DASHBOARD & EXPORT                                                */}
       {/* ------------------------------------------------------------------ */}
 
-      <h2 id="api-endpoints">API Endpoints</h2>
+      <h2 id="dashboard">Dashboard and JSON Export</h2>
       <p>
-        All report endpoints are authenticated. Include a valid JWT token in the{' '}
-        <code>Authorization</code> header. Each endpoint returns the report data in a{' '}
-        <code>{"{ \"data\": ... }"}</code> envelope.
-      </p>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Method</th>
-            <th>Endpoint</th>
-            <th>Query Params</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>GET</code></td>
-            <td><code>/sentinel/api/reports/gdpr</code></td>
-            <td><code>?window=720h</code></td>
-            <td>Generate a GDPR compliance report for the specified time window.</td>
-          </tr>
-          <tr>
-            <td><code>GET</code></td>
-            <td><code>/sentinel/api/reports/pci-dss</code></td>
-            <td>None (fixed 90 days)</td>
-            <td>Generate a PCI-DSS compliance report for the last 90 days.</td>
-          </tr>
-          <tr>
-            <td><code>GET</code></td>
-            <td><code>/sentinel/api/reports/soc2</code></td>
-            <td><code>?window=720h</code></td>
-            <td>Generate a SOC 2 compliance report for the specified time window.</td>
-          </tr>
-        </tbody>
-      </table>
-
-      {/* ------------------------------------------------------------------ */}
-      {/*  TIME WINDOWS                                                      */}
-      {/* ------------------------------------------------------------------ */}
-
-      <h2 id="time-windows">Time Windows</h2>
-      <p>
-        GDPR and SOC 2 reports accept a <code>?window</code> query parameter that controls how far
-        back the report looks. The value is a Go-style duration string. If omitted, the default is{' '}
-        <code>720h</code> (30 days).
-      </p>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Value</th>
-            <th>Duration</th>
-            <th>Use Case</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>168h</code></td>
-            <td>7 days</td>
-            <td>Weekly reviews and quick checks on recent activity.</td>
-          </tr>
-          <tr>
-            <td><code>720h</code></td>
-            <td>30 days</td>
-            <td>Standard monthly compliance reporting. <strong>Default.</strong></td>
-          </tr>
-          <tr>
-            <td><code>2160h</code></td>
-            <td>90 days</td>
-            <td>Quarterly audits, SOC 2 Type II evidence collection.</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <Callout type="success" title="Custom Windows">
-        You can pass any valid Go duration, not just the predefined values. For example,{' '}
-        <code>?window=336h</code> produces a 14-day report. If the value cannot be parsed, the
-        endpoint falls back to the default 720h window.
-      </Callout>
-
-      {/* ------------------------------------------------------------------ */}
-      {/*  DASHBOARD                                                         */}
-      {/* ------------------------------------------------------------------ */}
-
-      <h2 id="dashboard">Dashboard</h2>
-      <p>
-        The Sentinel dashboard includes a dedicated Reports page that provides a graphical
-        interface for generating compliance reports without using the API directly.
-      </p>
-
-      <ul>
-        <li>
-          <strong>Report type selector</strong> -- choose between GDPR, PCI-DSS, and SOC 2 using
-          toggle buttons at the top of the page.
-        </li>
-        <li>
-          <strong>Date range picker</strong> -- select the time window from a dropdown. The
-          dropdown is hidden for PCI-DSS since it always covers 90 days.
-        </li>
-        <li>
-          <strong>Generate button</strong> -- click to generate the report on demand. A loading
-          indicator is shown while the report is being computed.
-        </li>
-        <li>
-          <strong>Structured display</strong> -- the report is rendered with summary statistics in
-          a grid layout, followed by detailed sections (requirements status, user data summary,
-          anomaly events, etc.) depending on the report type.
-        </li>
-        <li>
-          <strong>JSON export</strong> -- an Export JSON button appears after a report is generated,
-          allowing you to download the report data as a JSON file.
-        </li>
-      </ul>
-
-      <p>
-        Access the Reports page at{' '}
-        <code>http://localhost:8080/sentinel/ui</code> and navigate to the Reports section.
-      </p>
-
-      {/* ------------------------------------------------------------------ */}
-      {/*  JSON EXPORT                                                       */}
-      {/* ------------------------------------------------------------------ */}
-
-      <h2 id="json-export">JSON Export</h2>
-      <p>
-        Both the dashboard and the API return reports as JSON. From the dashboard, clicking the{' '}
-        <strong>Export JSON</strong> button downloads the report as a file named{' '}
-        <code>sentinel-{'<type>'}-report-{'<date>'}.json</code>, where <code>{'<type>'}</code> is
-        the report type (gdpr, pci-dss, or soc2) and <code>{'<date>'}</code> is the current date
-        in <code>YYYY-MM-DD</code> format.
-      </p>
-
-      <CodeBlock
-        language="text"
-        showLineNumbers={false}
-        code={`sentinel-gdpr-report-2025-06-15.json
-sentinel-pci-dss-report-2025-06-15.json
-sentinel-soc2-report-2025-06-15.json`}
-      />
-
-      <p>
-        When consuming reports programmatically via the API, pipe the response through{' '}
-        <code>jq</code> to extract the <code>.data</code> field and redirect it to a file:
+        The dashboard's Reports page lets you pick a report type and window, generate it, and export
+        it with the <strong>Export JSON</strong> button as{' '}
+        <code>sentinel-{'<type>'}-report-{'<date>'}.json</code>. From the API, extract the{' '}
+        <code>.data</code> field:
       </p>
 
       <CodeBlock
         language="bash"
         showLineNumbers={false}
-        code={`curl -s -H "Authorization: Bearer <token>" \\
-  "http://localhost:8080/sentinel/api/reports/gdpr?window=720h" \\
-  | jq '.data' > gdpr-report.json`}
+        code={`TOKEN=$(curl -s -X POST http://localhost:8080/sentinel/api/auth/login \\
+  -H "Content-Type: application/json" \\
+  -d '{"username":"admin","password":"<your-password>"}' | jq -r .token)
+
+curl -s -H "Authorization: Bearer $TOKEN" \\
+  "http://localhost:8080/sentinel/api/reports/gdpr?window=720h" | jq '.data' > gdpr-report.json
+
+curl -s -H "Authorization: Bearer $TOKEN" \\
+  "http://localhost:8080/sentinel/api/reports/pci-dss" | jq '.data.provenance'`}
       />
 
       {/* ------------------------------------------------------------------ */}
-      {/*  TESTING                                                           */}
+      {/*  PROGRAMMATIC                                                      */}
       {/* ------------------------------------------------------------------ */}
 
-      <h2 id="testing">Testing</h2>
+      <h2 id="how-it-works">Generating Reports in Code</h2>
       <p>
-        Use the following <code>curl</code> commands to generate each report type. Replace{' '}
-        <code>{'<token>'}</code> with a valid JWT token obtained from the dashboard login endpoint.
+        Reports come from <code>reports.Generator</code>, which queries any <code>storage.Store</code>.
+        Tell it about the store with <code>SetSourceInfo</code> so the provenance block can describe
+        it; without that, reports warn that durability and retention are unknown.
       </p>
-
-      <h3>Generate GDPR Report</h3>
-      <CodeBlock
-        language="bash"
-        showLineNumbers={false}
-        code={`# GDPR report for the last 30 days (default)
-curl -s -H "Authorization: Bearer <token>" \\
-  "http://localhost:8080/sentinel/api/reports/gdpr?window=720h" | jq .
-
-# GDPR report for the last 7 days
-curl -s -H "Authorization: Bearer <token>" \\
-  "http://localhost:8080/sentinel/api/reports/gdpr?window=168h" | jq .
-
-# GDPR report for the last 90 days
-curl -s -H "Authorization: Bearer <token>" \\
-  "http://localhost:8080/sentinel/api/reports/gdpr?window=2160h" | jq .`}
-      />
-
-      <h3>Generate PCI-DSS Report</h3>
-      <CodeBlock
-        language="bash"
-        showLineNumbers={false}
-        code={`# PCI-DSS report (always 90 days, no window parameter)
-curl -s -H "Authorization: Bearer <token>" \\
-  "http://localhost:8080/sentinel/api/reports/pci-dss" | jq .`}
-      />
-
-      <h3>Generate SOC 2 Report</h3>
-      <CodeBlock
-        language="bash"
-        showLineNumbers={false}
-        code={`# SOC 2 report for the last 30 days (default)
-curl -s -H "Authorization: Bearer <token>" \\
-  "http://localhost:8080/sentinel/api/reports/soc2?window=720h" | jq .
-
-# SOC 2 report for the last 90 days
-curl -s -H "Authorization: Bearer <token>" \\
-  "http://localhost:8080/sentinel/api/reports/soc2?window=2160h" | jq .`}
-      />
-
-      <Callout type="info" title="Authentication">
-        All report endpoints require authentication. Obtain a JWT token by logging into the
-        dashboard at <code>POST /sentinel/api/login</code> with your dashboard credentials. Include
-        the token as <code>Authorization: Bearer {'<token>'}</code> in every request.
-      </Callout>
-
-      {/* ------------------------------------------------------------------ */}
-      {/*  REPORT GENERATION INTERNALS                                       */}
-      {/* ------------------------------------------------------------------ */}
-
-      <h2 id="how-it-works">How It Works</h2>
-      <p>
-        Reports are generated on demand by the <code>reports.Generator</code> struct, which queries
-        the storage layer for the relevant data. Each report type has a dedicated generator method
-        that assembles data from multiple storage queries into a single response.
-      </p>
-
-      <ol>
-        <li>
-          <strong>GDPR</strong> -- queries user activity, READ/DELETE audit logs, and anomaly-type
-          threat events to build the user data access summary and unusual access patterns list.
-        </li>
-        <li>
-          <strong>PCI-DSS</strong> -- queries authentication audit logs, all threat events, and
-          blocked threats over a fixed 90-day window. Computes failure rates and maps results to
-          PCI-DSS requirement categories.
-        </li>
-        <li>
-          <strong>SOC 2</strong> -- queries threat stats, the security score, resolved incidents,
-          audit logs, blocked IPs, and anomaly events to build evidence across monitoring, incident
-          response, and access control sections.
-        </li>
-      </ol>
 
       <CodeBlock
         language="go"
-        filename="reports/compliance.go"
-        code={`// Generator produces compliance reports from stored Sentinel data.
-type Generator struct {
-    store storage.Store
-}
+        filename="report.go"
+        code={`gen := reports.NewGenerator(store)
+gen.SetSourceInfo(reports.SourceInfo{
+    StorageDriver:        "postgres",
+    RetentionDays:        90,
+    AuditRetentionDays:   365,
+    UserActivityRecorded: true, // Config.UserExtractor is set
+})
 
-// NewGenerator creates a new compliance report generator.
-func NewGenerator(store storage.Store) *Generator {
-    return &Generator{store: store}
+report, err := gen.GenerateSOC2(ctx, 30*24*time.Hour)
+if err != nil {
+    return err
 }
-
-// GenerateGDPR produces a GDPR compliance report for the given time window.
-func (g *Generator) GenerateGDPR(ctx context.Context, window time.Duration) (*GDPRReport, error) {
-    // Queries user activity, audit logs (READ/DELETE), and anomaly threats
-    // Returns structured report with per-user summaries
-}
-
-// GeneratePCIDSS produces a PCI-DSS compliance report for the last 90 days.
-func (g *Generator) GeneratePCIDSS(ctx context.Context) (*PCIDSSReport, error) {
-    // Fixed 90-day window, no configurable parameter
-    // Queries auth audit logs, all threats, and blocked threats
-}
-
-// GenerateSOC2 produces a SOC2 compliance report for the given time window.
-func (g *Generator) GenerateSOC2(ctx context.Context, window time.Duration) (*SOC2Report, error) {
-    // Queries threat stats, security score, resolved incidents,
-    // audit logs, blocked IPs, and anomaly events
+for _, w := range report.Provenance.Warnings {
+    log.Println("report warning:", w)
 }`}
       />
 
-      {/* ------------------------------------------------------------------ */}
-      {/*  NEXT STEPS                                                        */}
-      {/* ------------------------------------------------------------------ */}
-
       <h2>Next Steps</h2>
       <ul>
-        <li><a href="/docs/the-dashboard">Dashboard</a> -- Access the Reports page and generate reports from the UI</li>
-        <li><a href="/docs/anomaly-detection">Anomaly Detection</a> -- Powers the unusual access patterns in GDPR and anomalies in SOC 2 reports</li>
-        <li><a href="/docs/waf">WAF</a> -- Threat events from the WAF feed into PCI-DSS and SOC 2 incident data</li>
-        <li><a href="/docs/auth-shield">Auth Shield</a> -- Authentication events that populate PCI-DSS auth metrics</li>
-        <li><a href="/docs/security-score">Security Score</a> -- The security score is included in SOC 2 monitoring evidence</li>
-        <li><a href="/docs/alerting">Alerting</a> -- Configure real-time alerts alongside periodic compliance reporting</li>
+        <li><a href="/docs/configuration#user-extractor">User Extractor</a> -- Record the user activity the GDPR report needs</li>
+        <li><a href="/docs/audit-logging">Audit Logging</a> -- The audit entries behind exports, deletions, and logins</li>
+        <li><a href="/docs/anomaly-detection">Anomaly Detection</a> -- Powers unusual access (GDPR) and anomaly events (SOC 2)</li>
+        <li><a href="/docs/auth-shield">Auth Shield</a> -- Records the login attempts in PCI-DSS auth events</li>
+        <li><a href="/docs/security-score">Security Score</a> -- Included in SOC 2 monitoring evidence</li>
       </ul>
     </>
   );

@@ -3,7 +3,8 @@ export const sidebarNav = [
     title: 'Getting Started',
     items: [
       { title: 'Introduction', href: '/docs/getting-started' },
-      { title: "What's New in v2", href: '/docs/whats-new-v2' },
+      { title: "What's New in v2.3", href: '/docs/whats-new-v2-3' },
+      { title: "What's New in v2.0", href: '/docs/whats-new-v2' },
       { title: 'Configuration', href: '/docs/configuration' },
     ],
   },
@@ -50,7 +51,8 @@ export const sidebarNav = [
 
 export const searchIndex = [
   { title: 'Introduction', href: '/docs/getting-started', content: 'Getting started installation quick start mount gin router zero config sentinel SDK security middleware', section: 'Getting Started' },
-  { title: "What's New in v2", href: '/docs/whats-new-v2', content: "v2.0.0 release breaking changes MountE error return TrustedProxies XFF X-Forwarded-For body cap CVSS PagerDuty SSRF HTTPClient CSP CAPTCHA hCaptcha Turnstile reCAPTCHA Postgres adapter AI budget cap drop counter migration guide", section: 'Getting Started' },
+  { title: "What's New in v2.3", href: '/docs/whats-new-v2-3', content: "v2.3.0 v2.2.2 v2.2.0 v2.1 release notes upgrade dashboard config live WAF rules sensitivity rule action log rate limit strategy sliding window token bucket UserExtractor user activity audit trail AuditRetentionDays compliance provenance X-Forwarded-For SQL injection sort_by SSRF ValidateConfig", section: 'Getting Started' },
+  { title: "What's New in v2.0", href: '/docs/whats-new-v2', content: "v2.0.0 release breaking changes MountE error return TrustedProxies XFF X-Forwarded-For body cap CVSS PagerDuty SSRF HTTPClient CSP CAPTCHA hCaptcha Turnstile reCAPTCHA Postgres adapter AI budget cap drop counter migration guide", section: 'Getting Started' },
   { title: 'Configuration', href: '/docs/configuration', content: 'Configuration options dashboard storage WAF rate limit auth shield headers anomaly alerts AI provider geolocation performance user extractor defaults', section: 'Getting Started' },
   { title: 'WAF', href: '/docs/waf', content: 'Web Application Firewall SQL injection XSS cross-site scripting path traversal command injection SSRF XXE custom rules regex patterns block log mode rule strictness severity', section: 'Security' },
   { title: 'Rate Limiting', href: '/docs/rate-limiting', content: 'Rate limiting per-IP per-user per-route global sliding window requests window duration 429 too many requests throttle', section: 'Security' },

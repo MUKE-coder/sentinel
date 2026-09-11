@@ -157,7 +157,13 @@ export default function AIAnalysis() {
             <td><code>DailySummary</code></td>
             <td><code>bool</code></td>
             <td>No</td>
-            <td>When <code>true</code>, enables automatic daily summary generation.</td>
+            <td><strong>Deprecated — has no effect.</strong> Nothing runs on a schedule; the daily summary is generated when someone opens it in the dashboard.</td>
+          </tr>
+          <tr>
+            <td><code>MaxCallsPerDay</code></td>
+            <td><code>int64</code></td>
+            <td>No</td>
+            <td>Cap on upstream LLM calls per UTC day across all AI features (default 500; cached responses don't count; 0 disables the cap).</td>
           </tr>
         </tbody>
       </table>
@@ -167,10 +173,13 @@ export default function AIAnalysis() {
         filename="core/config.go"
         code={`// AIConfig configures optional AI-powered analysis.
 type AIConfig struct {
-    Provider     AIProvider \`json:"provider"\`
-    APIKey       string     \`json:"api_key"\`
-    Model        string     \`json:"model,omitempty"\`
-    DailySummary bool       \`json:"daily_summary,omitempty"\`
+    Provider       AIProvider
+    APIKey         string
+    Model          string
+    MaxCallsPerDay int64 // default 500
+
+    // Deprecated: has no effect.
+    DailySummary bool
 }
 
 // AIProvider specifies which AI provider to use.
@@ -237,6 +246,94 @@ const (
         Never hardcode API keys in your source code. Use environment variables or a secrets manager.
         The examples above use <code>os.Getenv()</code> to load the key from the environment at
         runtime.
+      </Callout>
+
+      {/* ------------------------------------------------------------------ */}
+      {/*  DATA HANDLING                                                     */}
+      {/* ------------------------------------------------------------------ */}
+
+      <h2 id="data-handling">What Is Sent to the AI Provider</h2>
+      <p>
+        Turning on AI means sending security data to a third party — Anthropic, OpenAI, or Google.
+        This is exactly what leaves your process, so you can decide whether that is acceptable for
+        your data.
+      </p>
+
+      <ul>
+        <li>
+          <strong>Nothing is sent unless someone asks.</strong> Every call is triggered by a
+          dashboard user opening an AI feature. Nothing runs on a schedule, and with{' '}
+          <code>AI</code> left <code>nil</code> — the default — nothing is ever sent.
+        </li>
+        <li>
+          <strong>Responses are cached for an hour</strong>, and <code>MaxCallsPerDay</code> caps
+          total calls.
+        </li>
+        <li>
+          <strong>No redaction is applied.</strong> Query strings and body snippets are sent as
+          recorded. They are attacker-controlled, but they are recorded from requests to your
+          application and can contain your users' data — a login form body, a token in a query
+          string, an email address in a search.
+        </li>
+      </ul>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>Data sent</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Threat analysis</td>
+            <td>
+              The threat's ID, time, source IP, method, path, status, threat types, severity,
+              confidence, and blocked flag; the query string (up to 500 characters); the first 500
+              characters of the request body; User-Agent; country; each evidence item (pattern, the
+              matched text up to 200 characters, location, parameter name). Plus the attacker's
+              profile: request and threat counts, risk score, attack types, first seen, ISP, AbuseIPDB
+              score.
+            </td>
+          </tr>
+          <tr>
+            <td>Actor analysis</td>
+            <td>
+              The IP, country, city, ISP, first and last seen, request and threat counts, risk score,
+              attack types, targeted routes, status, AbuseIPDB score, known-bad flag, and the actor's
+              last 10 threats (time, method, path, types, severity, blocked). No payloads.
+            </td>
+          </tr>
+          <tr>
+            <td>Daily summary</td>
+            <td>
+              Aggregate counts only: totals by severity, blocked count, unique attacker IPs, top
+              attack types. No IPs, paths, or payloads.
+            </td>
+          </tr>
+          <tr>
+            <td>Natural language query</td>
+            <td>
+              Your question; the last 24 hours' threat statistics; the security score; up to 20 recent
+              threats (time, types, IP, country, method, path, severity, blocked, full query string);
+              up to 10 top actors (IP, country, ISP, counts, risk, attack types).
+            </td>
+          </tr>
+          <tr>
+            <td>WAF recommendations</td>
+            <td>
+              From the last 50 threats, per threat type: up to 5 "method path" pairs and up to 3 sample
+              payloads (query strings or body snippets).
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <Callout type="warning" title="Privacy-conscious deployments">
+        If request bodies or query strings in your application can carry personal or payment data,
+        either leave <code>AI</code> unset or keep threat analysis, natural-language queries, and WAF
+        recommendations — the features that send payloads — out of your operators' workflow. The
+        daily summary sends aggregates only. Redaction options are planned.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}

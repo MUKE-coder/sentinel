@@ -71,8 +71,9 @@ export default function GettingStarted() {
 
       <h2>Quick Start</h2>
       <p>
-        The simplest way to use Sentinel is with zero configuration. This gives you an in-memory
-        store, all defaults, and a dashboard at <code>/sentinel/ui</code>.
+        The simplest way to use Sentinel is with zero configuration. This gives you a SQLite store
+        (<code>sentinel.db</code> next to your binary), all defaults, and a dashboard at{' '}
+        <code>/sentinel/ui</code>.
       </p>
       <CodeBlock
         language="go"
@@ -102,8 +103,10 @@ func main() {
       />
 
       <Callout type="info" title="Zero Config">
-        With <code>sentinel.Config{'{}'}</code>, Sentinel uses sensible defaults: in-memory storage, WAF disabled,
-        rate limiting disabled. The dashboard is always available.
+        With <code>sentinel.Config{'{}'}</code>, Sentinel uses sensible defaults: SQLite storage in{' '}
+        <code>sentinel.db</code>, WAF disabled, rate limiting disabled. The dashboard is always
+        available. The default dashboard credentials are refused in <code>gin.ReleaseMode</code> —
+        set <code>Dashboard.Password</code> and <code>Dashboard.SecretKey</code> before deploying.
       </Callout>
 
       <h2>With WAF and Rate Limiting</h2>
@@ -160,7 +163,7 @@ func main() {
         <code>sentinel.Mount()</code> performs the following in order:
       </p>
       <ol>
-        <li>Initializes the storage backend (SQLite or in-memory)</li>
+        <li>Initializes the storage backend (SQLite by default; Postgres or in-memory if configured)</li>
         <li>Runs database migrations</li>
         <li>Creates the IP manager for whitelist/blacklist</li>
         <li>Sets up the async event pipeline with worker goroutines</li>
@@ -194,8 +197,9 @@ func main() {
 ├── pipeline/       # Async event pipeline (ring buffer, workers)
 ├── reports/        # Compliance report generators
 ├── storage/        # Storage interface + implementations
-│   ├── memory/     # In-memory store (default)
-│   └── sqlite/     # Pure-Go SQLite store
+│   ├── sqlite/     # Pure-Go SQLite store (default)
+│   ├── postgres/   # Postgres store (shares the SQLite store's GORM models)
+│   └── memory/     # In-memory store (development and tests)
 ├── ui/             # Embedded React dashboard
 ├── sentinel.go     # Mount() entry point
 └── models.go       # Type aliases from core/`}
@@ -207,8 +211,9 @@ func main() {
           <tr><th>Driver</th><th>Config Value</th><th>Notes</th></tr>
         </thead>
         <tbody>
-          <tr><td>Memory</td><td><code>sentinel.Memory</code></td><td>Default. No persistence — good for development.</td></tr>
-          <tr><td>SQLite</td><td><code>sentinel.SQLite</code></td><td>Pure Go (no CGo). Recommended for production.</td></tr>
+          <tr><td>SQLite</td><td><code>sentinel.SQLite</code></td><td>Default. Pure Go (no CGo). In containers, keep the file on a persistent volume.</td></tr>
+          <tr><td>Postgres</td><td><code>sentinel.Postgres</code></td><td>Recommended for production and for multiple replicas.</td></tr>
+          <tr><td>Memory</td><td><code>sentinel.Memory</code></td><td>Development and tests only — everything is lost on restart.</td></tr>
         </tbody>
       </table>
 
