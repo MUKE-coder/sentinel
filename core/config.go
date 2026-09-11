@@ -71,6 +71,14 @@ type StorageConfig struct {
 	// requires 12 months of it. Default: 365.
 	AuditRetentionDays int
 
+	// AuditKey, when set, makes the audit log's hash chain an HMAC-SHA256
+	// chain: someone with write access to the database but not this key
+	// cannot rewrite entries and recompute the chain undetectably. Keep it
+	// outside the database (an env var or secrets manager) and stable —
+	// entries hashed under a different key fail verification. Without it the
+	// chain is plain SHA-256, which catches accidental damage and naive edits.
+	AuditKey string
+
 	MaxOpenConns int
 	MaxIdleConns int
 }

@@ -159,6 +159,7 @@ func (s *Server) RegisterRoutes(r *gin.Engine, prefix string) {
 
 		// Audit Logs
 		protected.GET("/audit-logs", s.handleListAuditLogs)
+		protected.GET("/audit-logs/verify", s.handleVerifyAuditLogs)
 
 		// Auth Shield
 		protected.POST("/auth/unblock-user/:username", s.handleUnblockUser)

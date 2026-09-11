@@ -32,6 +32,7 @@ import (
 	"github.com/MUKE-coder/sentinel/v2/middleware"
 	"github.com/MUKE-coder/sentinel/v2/pipeline"
 	"github.com/MUKE-coder/sentinel/v2/storage"
+	"github.com/MUKE-coder/sentinel/v2/storage/auditchain"
 	"github.com/MUKE-coder/sentinel/v2/storage/memory"
 	"github.com/MUKE-coder/sentinel/v2/storage/postgres"
 	"github.com/MUKE-coder/sentinel/v2/storage/sqlite"
@@ -142,6 +143,11 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	profiler := intelligence.NewProfiler(store)
 	pipe.AddHandler(profiler)
 
+	// Audit entries are linked into this process's hash chain as they are
+	// stored, so a later edit or deletion is detectable
+	// (GET <prefix>/api/audit-logs/verify).
+	auditChain := auditchain.New([]byte(config.Storage.AuditKey))
+
 	// Add storage handler to pipeline
 	pipe.AddHandler(pipeline.HandlerFunc(func(ctx context.Context, event pipeline.Event) error {
 		switch event.Type {
@@ -159,6 +165,7 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 			}
 		case pipeline.EventAudit:
 			if al, ok := event.Payload.(*AuditLog); ok {
+				auditChain.Link(al)
 				return store.SaveAuditLog(ctx, al)
 			}
 		}

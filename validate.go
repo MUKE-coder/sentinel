@@ -114,6 +114,11 @@ func ValidateConfig(config Config) []ConfigIssue {
 			"%d days of audit history is below the 12 months PCI-DSS 10.5.1 requires", config.Storage.AuditRetentionDays)
 	}
 
+	if key := config.Storage.AuditKey; key != "" && len(key) < 16 {
+		report(IssueWarning, "Storage.AuditKey",
+			"is only %d bytes — a short HMAC key can be brute-forced, letting someone rewrite the audit chain undetectably; use at least 32 random bytes", len(key))
+	}
+
 	// --- Dashboard ---
 	if config.Dashboard.Prefix != "" && !strings.HasPrefix(config.Dashboard.Prefix, "/") {
 		report(IssueError, "Dashboard.Prefix",

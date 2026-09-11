@@ -222,6 +222,11 @@ func TestValidateConfigCatchesSilentTraps(t *testing.T) {
 			IssueWarning, "Storage.Driver",
 		},
 		{
+			"short audit HMAC key",
+			Config{Storage: StorageConfig{AuditKey: "short"}},
+			IssueWarning, "Storage.AuditKey",
+		},
+		{
 			"unknown WAF mode acts as log mode",
 			Config{WAF: WAFConfig{Mode: "Block"}},
 			IssueError, "WAF.Mode",

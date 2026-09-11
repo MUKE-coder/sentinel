@@ -24,6 +24,16 @@ All notable changes to Sentinel are documented here.
 - A data-egress test drives every AI feature with a threat full of personal
   data through a real provider pointed at a capturing endpoint and asserts
   exactly what was sent.
+- **Tamper-evident audit log.** Every audit entry is linked into a hash
+  chain as it is stored (new `chain_id`, `chain_seq`, `prev_hash`, `hash`
+  fields; one chain per process). `GET /api/audit-logs/verify` recomputes
+  the chains and reports entries whose content no longer matches their hash,
+  gaps where entries were deleted, and broken links. Set
+  `Storage.AuditKey` to make it an HMAC-SHA256 chain, so someone with
+  database access but not the key cannot rewrite entries and recompute the
+  chain. Entries written before v2.4.0 are reported as unchained. Package
+  `storage/auditchain` exposes `Chain`, `Hash`, and `Verify`.
+  `ValidateConfig` warns about an `AuditKey` shorter than 16 bytes.
 
 ### Behavior changes
 

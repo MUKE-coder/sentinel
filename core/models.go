@@ -113,6 +113,13 @@ type AuditLog struct {
 	Success    bool      `json:"success"`
 	Error      string    `json:"error,omitempty"`
 	RequestID  string    `json:"request_id"`
+
+	// Hash-chain fields, set by Sentinel as the entry is stored (v2.4.0+).
+	// Each process writes its own chain; see package storage/auditchain.
+	ChainID  string `json:"chain_id,omitempty"`
+	ChainSeq int64  `json:"chain_seq,omitempty"`
+	PrevHash string `json:"prev_hash,omitempty"`
+	Hash     string `json:"hash,omitempty"`
 }
 
 // AuditResourceAuth is the AuditLog.Resource for authentication events:

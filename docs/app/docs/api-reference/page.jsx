@@ -228,6 +228,7 @@ curl -X POST http://localhost:8080/sentinel/api/waf/test \\
           ['GET', '/api/users/:user_id/activity', <>Paginated activity for one user; <code>start_time</code> / <code>end_time</code> filters.</>],
           ['GET', '/api/users/:user_id/threats', 'Paginated threats attributed to one user.'],
           ['GET', '/api/audit-logs', <>Paginated audit entries — GORM data changes, dashboard actions, logins. Filters: <code>user_id</code>, <code>action</code>, <code>resource</code>, <code>start_time</code>, <code>end_time</code>. Read-only: there is no endpoint to edit or delete an entry.</>],
+          ['GET', '/api/audit-logs/verify', <>Recompute the audit hash chains and report <code>ok</code>, <code>checked</code>, <code>unchained</code>, <code>chains</code>, <code>keyed</code>, and <code>problems</code> (<code>modified</code>, <code>missing</code>, <code>broken_link</code>).</>],
           ['GET', '/api/auth-shield/status', 'Per-IP AuthShield state: failed attempts, lockout, CAPTCHA tier.'],
           ['POST', '/api/auth/unblock-user/:username', 'Lift an AuthShield lockout for a username. Audited.'],
         ]}
