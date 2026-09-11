@@ -330,6 +330,24 @@ func ComputeRiskScore(actor *sentinel.ThreatActor) int {
             <td><code>80</code></td>
             <td>Minimum AbuseIPDB confidence score (0-100) to trigger auto-blocking.</td>
           </tr>
+          <tr>
+            <td><code>MaxChecksPerDay</code></td>
+            <td><code>int</code></td>
+            <td><code>900</code></td>
+            <td>Daily cap on live checks of attacking IPs. Cached results don't count. The default leaves room under the free plan's 1,000 checks a day for dashboard lookups. (v2.4.0+)</td>
+          </tr>
+          <tr>
+            <td><code>Feeds</code></td>
+            <td><code>[]string</code></td>
+            <td><code>nil</code></td>
+            <td>URLs of public IP blocklists to block. Works without an AbuseIPDB key. See <a href="#blocklist-feeds">Blocklist Feeds</a>. (v2.4.0+)</td>
+          </tr>
+          <tr>
+            <td><code>FeedRefresh</code></td>
+            <td><code>time.Duration</code></td>
+            <td><code>24h</code></td>
+            <td>How often feeds are downloaded again. (v2.4.0+)</td>
+          </tr>
         </tbody>
       </table>
 
@@ -352,12 +370,63 @@ func ComputeRiskScore(actor *sentinel.ThreatActor) int {
         checked IP exceeds the threshold, it is immediately added to the blocklist via the IP Manager.
       </p>
 
-      <Callout type="warning" title="Checks run on demand">
-        A reputation check happens when an IP is looked up — from an actor's page in the dashboard,
-        or <code>GET /sentinel/api/ip/:ip/reputation</code>. Sentinel does not yet check IPs
-        automatically as traffic arrives, so <code>AutoBlock</code> only acts on IPs someone has
-        looked up, and a new deployment gets no reputation data on its own. Checking on first sight
-        and bulk blocklist feeds are planned. The free AbuseIPDB plan allows 1,000 checks per day.
+      <Callout type="info" title="Checked as attacks arrive (v2.4.0+)">
+        With <code>Enabled</code> and a key set, every IP behind a threat event is queued for a check
+        on a background goroutine, so a slow or rate-limited AbuseIPDB never holds up requests or the
+        event pipeline. Each IP is checked at most once a day, private and loopback addresses are
+        skipped, and <code>MaxChecksPerDay</code> caps the spend. The result updates the actor's
+        abuse score, known-bad flag, and risk score, and <code>AutoBlock</code> applies. Before
+        v2.4.0 checks ran only when someone opened an IP in the dashboard.
+        <code>GET /sentinel/api/ip/feeds</code> reports today's quota use.
+      </Callout>
+
+      <h3 id="blocklist-feeds">Blocklist Feeds</h3>
+      <p>
+        A new deployment has no history of its own, so a public blocklist gives it reputation data
+        from day one. Point <code>Feeds</code> at one or more lists; they are downloaded through
+        Sentinel's SSRF-safe client, merged into address ranges, and blocked exactly like IPs blocked
+        from the dashboard. Each refresh swaps in the whole set at once, and a feed that fails to
+        download keeps its last good copy.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Format</th>
+            <th>Examples</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>One IP or CIDR per line; <code>#</code> and <code>;</code> start comments</td>
+            <td>Spamhaus DROP text lists, FireHOL netsets</td>
+          </tr>
+          <tr>
+            <td>NDJSON, one object per line with a <code>cidr</code> field</td>
+            <td>Spamhaus <code>drop_v4.json</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <CodeBlock
+        language="go"
+        filename="main.go"
+        code={`IPReputation: sentinel.IPReputationConfig{
+    // Check the provider's terms and current URLs before relying on a feed.
+    Feeds: []string{
+        "https://www.spamhaus.org/drop/drop_v4.json",
+        "https://iplists.firehol.org/files/firehol_level1.netset",
+    },
+    FeedRefresh: 12 * time.Hour,
+},`}
+      />
+
+      <Callout type="warning" title="Choose feeds carefully">
+        Aggressive lists block legitimate users — FireHOL level 1, for example, includes private
+        ranges, which would block traffic arriving from your own reverse proxy if{' '}
+        <code>WAF.TrustedProxies</code> isn't set. Prefer conservative lists such as Spamhaus DROP,
+        and watch <code>GET /sentinel/api/ip/feeds</code> for each feed's entry count and last
+        error.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}

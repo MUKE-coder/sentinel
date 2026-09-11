@@ -19,7 +19,10 @@ type ReputationChecker struct {
 	cache     map[string]*cachedReputation
 	mu        sync.RWMutex
 	client    *http.Client
+	endpoint  string
 }
+
+const abuseIPDBEndpoint = "https://api.abuseipdb.com/api/v2/check"
 
 type cachedReputation struct {
 	result    *sentinel.ReputationResult
@@ -36,7 +39,17 @@ func NewReputationChecker(config sentinel.IPReputationConfig, ipManager *IPManag
 		ipManager: ipManager,
 		cache:     make(map[string]*cachedReputation),
 		client:    &http.Client{Timeout: 10 * time.Second},
+		endpoint:  abuseIPDBEndpoint,
 	}
+}
+
+// cachedFresh reports whether a result for ip is cached and still fresh, so
+// checking it again costs no API call.
+func (rc *ReputationChecker) cachedFresh(ip string) bool {
+	rc.mu.RLock()
+	defer rc.mu.RUnlock()
+	c, ok := rc.cache[ip]
+	return ok && time.Since(c.checkedAt) < reputationCacheTTL
 }
 
 // CheckReputation checks the reputation of an IP address via AbuseIPDB.
@@ -98,7 +111,7 @@ type abuseIPDBResponse struct {
 }
 
 func (rc *ReputationChecker) queryAbuseIPDB(ctx context.Context, ip string) (*sentinel.ReputationResult, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.abuseipdb.com/api/v2/check", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", rc.endpoint, nil)
 	if err != nil {
 		return nil, err
 	}

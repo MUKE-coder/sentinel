@@ -34,6 +34,36 @@ All notable changes to Sentinel are documented here.
   chain. Entries written before v2.4.0 are reported as unchained. Package
   `storage/auditchain` exposes `Chain`, `Hash`, and `Verify`.
   `ValidateConfig` warns about an `AuditKey` shorter than 16 bytes.
+- **IP reputation on live traffic.** AbuseIPDB was consulted only when
+  someone opened an IP in the dashboard, so `AutoBlock` never acted on
+  attackers as they arrived and a new deployment had no reputation data.
+  Attacking IPs are now checked as threat events arrive, on a background
+  goroutine under a daily quota (`IPReputation.MaxChecksPerDay`, default
+  900 — under the free plan's 1,000; cached results don't count; private
+  and loopback addresses are skipped). Results update the actor's abuse
+  score, known-bad flag, and risk score, and `AutoBlock` applies.
+- **Blocklist feeds** (`IPReputation.Feeds`, refreshed every
+  `FeedRefresh`, default 24h). Plain-text lists with one IP or CIDR per line
+  (Spamhaus DROP, FireHOL netsets) and NDJSON lists with a `cidr` field
+  (Spamhaus `drop_v4.json`) are downloaded through the SSRF-safe client,
+  merged into sorted ranges, and blocked like dashboard blocks. A feed that
+  fails to download keeps its last good copy. Works without an AbuseIPDB
+  key.
+- `GET /api/ip/feeds` reports live-check quota use and each feed's entry
+  count, last refresh, and last error.
+- `ValidateConfig` flags feed entries that aren't http(s) URLs and
+  `AutoBlock` without `Enabled`.
+
+### 🔥 Fix
+
+- **IP blocks did nothing with the WAF disabled.** Blocks were enforced
+  only inside the WAF middleware, so blocking an IP from the dashboard (or
+  via `AutoBlock`) had no effect when `WAF.Enabled` was false. Mount now
+  installs a small IP-block middleware in that case.
+- **Data races in the in-memory store.** Actors and threats were handed out
+  as the stored pointers, so the profiler updating an actor or
+  `UpdateThreat` resolving a threat raced API handlers reading the same
+  struct. The memory store now returns copies.
 
 ### Behavior changes
 

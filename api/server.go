@@ -36,6 +36,8 @@ type Server struct {
 	aiProvider       ai.Provider
 	rateLimiter      *middleware.RateLimiter
 	waf              *middleware.WAF
+	repWatcher       *intelligence.ReputationWatcher
+	feeds            *intelligence.FeedBlocklist
 	config          sentinel.Config
 	wsHub        *WSHub
 	loginRL      *LoginRateLimiter
@@ -156,6 +158,7 @@ func (s *Server) RegisterRoutes(r *gin.Engine, prefix string) {
 
 		// IP Reputation
 		protected.GET("/ip/:ip/reputation", s.handleIPReputation)
+		protected.GET("/ip/feeds", s.handleIPIntelStatus)
 
 		// Audit Logs
 		protected.GET("/audit-logs", s.handleListAuditLogs)

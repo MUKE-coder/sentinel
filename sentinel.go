@@ -31,6 +31,7 @@ import (
 	"github.com/MUKE-coder/sentinel/v2/intelligence"
 	"github.com/MUKE-coder/sentinel/v2/middleware"
 	"github.com/MUKE-coder/sentinel/v2/pipeline"
+	"github.com/MUKE-coder/sentinel/v2/safefetch"
 	"github.com/MUKE-coder/sentinel/v2/storage"
 	"github.com/MUKE-coder/sentinel/v2/storage/auditchain"
 	"github.com/MUKE-coder/sentinel/v2/storage/memory"
@@ -183,6 +184,26 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	// 5b. Initialize IP reputation checker
 	repChecker := intelligence.NewReputationChecker(config.IPReputation, ipManager)
 
+	// Check attacking IPs as threat events arrive, not only when someone
+	// looks one up in the dashboard.
+	var repWatcher *intelligence.ReputationWatcher
+	if config.IPReputation.Enabled && config.IPReputation.AbuseIPDBKey != "" {
+		repWatcher = intelligence.NewReputationWatcher(repChecker, store, config.IPReputation.MaxChecksPerDay)
+		pipe.AddHandler(repWatcher)
+	}
+
+	// Public blocklist feeds, downloaded through the SSRF-safe client and
+	// refreshed in the background.
+	var feeds *intelligence.FeedBlocklist
+	if len(config.IPReputation.Feeds) > 0 {
+		feeds = intelligence.NewFeedBlocklist(config.IPReputation.Feeds, safefetch.Client(safefetch.Options{Timeout: time.Minute}))
+		go feeds.Run(context.Background(), config.IPReputation.FeedRefresh)
+	}
+	blockChecker := middleware.BlockCheckers{ipManager}
+	if feeds != nil {
+		blockChecker = append(blockChecker, feeds)
+	}
+
 	// 5c. Initialize anomaly detector and add to pipeline
 	if config.Anomaly.Enabled {
 		anomalyDetector := intelligence.NewAnomalyDetector(store, pipe, geoLocator, config.Anomaly)
@@ -233,8 +254,12 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	// lookups so the WAF never queries storage on the request hot path.
 	var waf *middleware.WAF
 	if config.WAF.Enabled {
-		waf = middleware.NewWAF(config.WAF, store, pipe, customRuleEngine, ipManager)
+		waf = middleware.NewWAF(config.WAF, store, pipe, customRuleEngine, blockChecker)
 		router.Use(waf.Handler())
+	} else {
+		// The WAF enforces IP blocks as its first step; without it, blocks
+		// from the dashboard, AutoBlock, and feeds still need enforcing.
+		router.Use(middleware.IPBlockMiddleware(blockChecker))
 	}
 
 	// 7. Register rate limiter
@@ -253,6 +278,12 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	// 10. Register API routes
 	apiServer := api.NewServer(store, pipe, ipManager, scoreEngine, config)
 	apiServer.SetReputationChecker(repChecker)
+	if repWatcher != nil {
+		apiServer.SetReputationWatcher(repWatcher)
+	}
+	if feeds != nil {
+		apiServer.SetFeedBlocklist(feeds)
+	}
 	apiServer.SetGeoLocator(geoLocator)
 	if alertDispatcher != nil {
 		apiServer.SetAlertDispatcher(alertDispatcher)
