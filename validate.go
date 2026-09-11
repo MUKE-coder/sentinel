@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/detection"
 	"github.com/MUKE-coder/sentinel/v2/middleware"
 )
 
@@ -140,6 +141,13 @@ func ValidateConfig(config Config) []ConfigIssue {
 			}
 		}
 	}
+	if !middleware.ValidWAFMode(config.WAF.Mode) {
+		report(IssueError, "WAF.Mode",
+			"%q is not log, block, or challenge — the WAF treats it as log mode and blocks nothing", config.WAF.Mode)
+	}
+	if err := middleware.ValidateRuleSet(config.WAF.Rules); err != nil {
+		report(IssueError, "WAF.Rules", "%v — the category is enforced as strict", err)
+	}
 	validateRoutePatterns(report, "WAF.ExcludeRoutes", config.WAF.ExcludeRoutes)
 	validateCustomRules(report, config.WAF.CustomRules)
 
@@ -154,6 +162,12 @@ func ValidateConfig(config Config) []ConfigIssue {
 			report(IssueError, "RateLimit.ByUser",
 				"a per-user limit is set but UserIDExtractor is nil — the limit never applies")
 		}
+	}
+	switch config.RateLimit.Strategy {
+	case FixedWindow, SlidingWindow, TokenBucket:
+	default:
+		report(IssueError, "RateLimit.Strategy",
+			"unknown strategy %q — the limiter falls back to sliding_window; use fixed_window, sliding_window, or token_bucket", config.RateLimit.Strategy)
 	}
 	validateLimit(report, "RateLimit.ByIP", config.RateLimit.ByIP)
 	validateLimit(report, "RateLimit.ByUser", config.RateLimit.ByUser)
@@ -236,6 +250,10 @@ func ValidateConfig(config Config) []ConfigIssue {
 			report(IssueError, "AI.Provider",
 				"unknown provider %q — the AI provider is silently disabled; use sentinel.Claude, sentinel.OpenAI, or sentinel.Gemini", config.AI.Provider)
 		}
+		if config.AI.DailySummary {
+			report(IssueWarning, "AI.DailySummary",
+				"is deprecated and has no effect — nothing runs on a schedule; the dashboard's AI page generates the daily summary on demand")
+		}
 	}
 
 	// --- IP reputation ---
@@ -295,6 +313,11 @@ func validateCustomRules(report func(IssueSeverity, string, string, ...any), rul
 				report(IssueError, field,
 					"AppliesTo location %q is not one of path/query/header/body — that location is silently never scanned", loc)
 			}
+		}
+
+		if !detection.ValidRuleAction(rule.Action) {
+			report(IssueError, field,
+				"Action %q is not \"block\" or \"log\" — the rule is enforced as if it were \"block\"", rule.Action)
 		}
 	}
 }

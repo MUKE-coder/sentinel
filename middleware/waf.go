@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -50,6 +51,59 @@ type IPBlockChecker interface {
 // Mount always supplies the checker; the store fallback exists for callers
 // wiring the middleware directly.
 func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipeline.Pipeline, customEngine *detection.CustomRuleEngine, blockChecker ...IPBlockChecker) gin.HandlerFunc {
+	return NewWAF(config, store, pipe, customEngine, blockChecker...).Handler()
+}
+
+// WAF is the WAF middleware together with the settings that can change
+// while it runs. The dashboard switches the mode and per-category
+// sensitivity through SetMode and SetRules; before v2.3.0 those edits only
+// changed the API server's copy of the config and never reached requests.
+type WAF struct {
+	mode    atomic.Value // sentinel.WAFMode
+	rules   atomic.Pointer[sentinel.RuleSet]
+	handler gin.HandlerFunc
+}
+
+// NewWAF builds the WAF middleware; see WAFMiddleware for the parameters.
+// Use it instead of WAFMiddleware when the mode or rules need to change at
+// runtime.
+func NewWAF(config sentinel.WAFConfig, store storage.Store, pipe *pipeline.Pipeline, customEngine *detection.CustomRuleEngine, blockChecker ...IPBlockChecker) *WAF {
+	w := &WAF{}
+	w.mode.Store(config.Mode)
+	rules := config.Rules
+	w.rules.Store(&rules)
+	w.handler = w.build(config, store, pipe, customEngine, blockChecker)
+	return w
+}
+
+// Handler returns the gin middleware.
+func (w *WAF) Handler() gin.HandlerFunc { return w.handler }
+
+// Mode returns the mode applied to requests right now.
+func (w *WAF) Mode() sentinel.WAFMode { return w.mode.Load().(sentinel.WAFMode) }
+
+// SetMode changes the mode for every subsequent request.
+func (w *WAF) SetMode(mode sentinel.WAFMode) error {
+	if !ValidWAFMode(mode) {
+		return fmt.Errorf("unknown WAF mode %q (use log, block, or challenge)", mode)
+	}
+	w.mode.Store(mode)
+	return nil
+}
+
+// Rules returns the per-category sensitivity applied to requests right now.
+func (w *WAF) Rules() sentinel.RuleSet { return *w.rules.Load() }
+
+// SetRules changes the per-category sensitivity for every subsequent request.
+func (w *WAF) SetRules(rules sentinel.RuleSet) error {
+	if err := ValidateRuleSet(rules); err != nil {
+		return err
+	}
+	w.rules.Store(&rules)
+	return nil
+}
+
+func (w *WAF) build(config sentinel.WAFConfig, store storage.Store, pipe *pipeline.Pipeline, customEngine *detection.CustomRuleEngine, blockChecker []IPBlockChecker) gin.HandlerFunc {
 	customRuleEngine := customEngine
 	excludeRoutes := NewRouteMatcher(config.ExcludeRoutes)
 	var checker IPBlockChecker
@@ -145,8 +199,9 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 			UserAgent: c.Request.UserAgent(),
 		}
 
-		// Classify and score
-		matches := detection.ClassifyRequest(inspected)
+		// Classify and score. Built-in matches are filtered by the current
+		// per-category sensitivity (WAF.Rules), which the dashboard can change.
+		matches := detection.ApplySensitivity(detection.ClassifyRequest(inspected), w.Rules())
 
 		// Also check custom rules if engine is available
 		if customRuleEngine != nil {
@@ -194,7 +249,14 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 			CVSSVector:  cvss.Vector,
 		}
 
-		switch config.Mode {
+		// A request that only trips custom rules with Action "log" is recorded
+		// but never enforced — that is how a new rule is watched against real
+		// traffic before it is trusted to block.
+		mode := w.Mode()
+		if !detection.AnyEnforced(matches) {
+			mode = sentinel.ModeLog
+		}
+		switch mode {
 		case sentinel.ModeBlock:
 			threatEvent.Blocked = true
 			threatEvent.StatusCode = http.StatusForbidden

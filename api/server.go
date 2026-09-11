@@ -35,6 +35,7 @@ type Server struct {
 	customRuleEngine *detection.CustomRuleEngine
 	aiProvider       ai.Provider
 	rateLimiter      *middleware.RateLimiter
+	waf              *middleware.WAF
 	config          sentinel.Config
 	wsHub        *WSHub
 	loginRL      *LoginRateLimiter
@@ -87,6 +88,12 @@ func (s *Server) SetAIProvider(p ai.Provider) {
 // SetRateLimiter sets the rate limiter for the API server.
 func (s *Server) SetRateLimiter(rl *middleware.RateLimiter) {
 	s.rateLimiter = rl
+}
+
+// SetWAF gives the API server the running WAF, so dashboard changes to the
+// mode and rule sensitivity apply to live requests.
+func (s *Server) SetWAF(w *middleware.WAF) {
+	s.waf = w
 }
 
 // RegisterRoutes registers all API routes on the Gin router.
