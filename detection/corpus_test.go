@@ -27,7 +27,9 @@ func loadCorpus(t *testing.T, path string, withCategory bool) []corpusSample {
 	var out []corpusSample
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		line := sc.Text()
+		// A Windows checkout (core.autocrlf) turns the corpora into CRLF;
+		// a trailing \r would break every end-of-value anchor.
+		line := strings.TrimRight(sc.Text(), "\r")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
