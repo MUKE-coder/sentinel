@@ -53,8 +53,41 @@ All notable changes to Sentinel are documented here.
   count, last refresh, and last error.
 - `ValidateConfig` flags feed entries that aren't http(s) URLs and
   `AutoBlock` without `Enabled`.
+- **Detection accuracy corpus.** `detection/testdata/benign.tsv` holds 89
+  legitimate requests picked to look suspicious: SQL keywords in searches,
+  Markdown with backticks, code in support messages, non-Latin text, URLs
+  in parameters. `attacks.tsv` holds 56 payloads, including double-encoded,
+  form-encoded, and comment-obfuscated evasions. `TestCorpus` measures the
+  built-in patterns at every sensitivity level and pins the counts, so a
+  pattern change that adds false positives or misses attacks fails CI. With
+  the default rule set: 9 of 89 false positives (10.1%) and 56 of 56
+  attacks detected. For comparison, v2.3.1's patterns flagged 32 of the
+  first 84 benign samples (38.1%) and missed 4 of the first 51 attacks.
+- **Attack regression suite** (`attack_regression_test.go`). These run end
+  to end through `MountE`:
+  - double-encoded and form-encoded payloads are blocked
+  - rotating `X-Forwarded-For`, `X-Real-IP`, `Forwarded`, `True-Client-IP`,
+    and `CF-Connecting-IP` doesn't reset a rate limit, get out of an IP
+    block, or avoid AuthShield's lockout during credential stuffing
+- `examples/scan-target` and `security/scan/docker-compose.yml`: a
+  deliberately injectable app behind Sentinel, plus OWASP ZAP and sqlmap
+  services, for scanning with the WAF off and then on.
 
 ### 🔥 Fix
+
+- **Double encoding bypassed the WAF.** The classifier decoded query values
+  once, as the router does. So `%2527` reached an app that decodes again as
+  an apostrophe, while the WAF only saw `%27`. Any percent-encoding left in
+  the path, parameter names and values, or body is now decoded up to two
+  more times, and every layer is scanned. The decoding is lenient, so a
+  stray `%` can't switch it off.
+- **Form-encoded bodies weren't decoded.** A login form posting
+  `username=admin%27+OR+%271%27%3D%271` got through. The body's decoded
+  layers are now scanned.
+- **Missed prototype pollution.** Pollution through `constructor.prototype`
+  (`a[constructor][prototype][x]=1`, `{"constructor":{"prototype":{…}}}`)
+  wasn't detected. Neither were percent-encoded `__proto__` keys, because
+  parameter names weren't scanned.
 
 - **IP blocks did nothing with the WAF disabled.** Blocks were enforced
   only inside the WAF middleware, so blocking an IP from the dashboard (or
@@ -74,6 +107,31 @@ All notable changes to Sentinel are documented here.
   set.
 - WAF recommendations sample the matched attack fragments instead of raw
   query strings and bodies.
+- **Built-in patterns no longer fire on ordinary prose and code.** Keywords
+  that are also English now need SQL statement shape:
+  - "drop table" needs a table name and a terminator
+  - "insert into" needs a column list, `VALUES`, or `SELECT`
+  - `--` and `#` need a quote, paren, or digit before them
+  - `sleep(`, `benchmark(`, and `and 1=1` need a SQL context
+  - `convert(`, `char(`, and `exec(` need SQL arguments
+  - a `0x` literal must be a whole value or sit in SQL
+  - an inline `/**/` must sit between SQL tokens
+
+  Other patterns now need context too:
+  - `eval(` and `document.cookie` count only where they break out of a
+    string or call
+  - `$(` and backticks count only at an injection point, not in Markdown
+  - internal hosts must be a URL host or a whole value, not a word in a
+    search
+  - `.env`, `.git`, and `web.config` must be a whole path segment
+  - `__proto__` must be a key or property access
+
+  A bare `/etc/passwd` is reported as LFI only, no longer also as command
+  injection.
+- **OpenRedirect** only fires on parameters named for a redirect
+  (`redirect*`, `return*`, `next`, `url`, `callback`, `continue`, `goto`,
+  and similar) that hold an absolute or scheme-relative URL. Before, any
+  `=https://` counted, so `avatar=https://cdn…` was an attack.
 
 ## [2.3.1] - 2026-09-11
 

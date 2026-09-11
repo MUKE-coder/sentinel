@@ -14,8 +14,9 @@ func main() {
 	r := gin.Default()
 
 	// Mount Sentinel with all defaults — zero config required.
-	// This enables: WAF (log mode), rate limiting (off), security headers,
-	// performance monitoring, SQLite storage, and the embedded dashboard.
+	// This enables security headers, performance monitoring, SQLite storage,
+	// and the embedded dashboard. The WAF and rate limiting stay off until
+	// you enable them (WAFConfig.Enabled, RateLimitConfig.Enabled).
 	sentinel.Mount(r, nil, sentinel.Config{})
 
 	// Your application routes

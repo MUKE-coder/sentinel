@@ -578,9 +578,15 @@ Content-Type: application/json
           is in the exclusion lists. If so, the request is passed through without inspection.
         </li>
         <li>
-          <strong>Request Decomposition</strong> — The classifier extracts four components from the
-          request: the URL <strong>path</strong>, the raw <strong>query string</strong>, all
-          HTTP <strong>headers</strong> (concatenated), and the request <strong>body</strong> (if present).
+          <strong>Request Decomposition</strong> — The classifier scans the URL <strong>path</strong>,
+          the raw <strong>query string</strong> and each decoded parameter name and value, six
+          <strong>headers</strong> (<code>Referer</code>, <code>User-Agent</code>, <code>Cookie</code>,
+          <code>X-Forwarded-For</code>, <code>Content-Type</code>, <code>Origin</code>), and the
+          request <strong>body</strong> (up to <code>MaxBodyBytes</code>). Anything still
+          percent-encoded after the router decoded it — in the path, a parameter, or a form-encoded
+          body — is decoded up to two more times and every layer is scanned, so a double-encoded
+          payload (<code>%2527</code> for an apostrophe) is caught. A stray <code>%</code> that isn&apos;t
+          an escape doesn&apos;t stop the decoding.
         </li>
         <li>
           <strong>Pattern Matching</strong> — Each extracted component is evaluated against the
@@ -631,6 +637,69 @@ Content-Type: application/json
         the request path, but event persistence, threat profiling, score computation, and alerting all
         happen asynchronously via the pipeline. This means the WAF adds minimal latency to your
         requests even under heavy attack traffic.
+      </Callout>
+
+      <h3 id="accuracy">Measured Accuracy</h3>
+      <p>
+        The built-in patterns are measured against two corpora in the repository:
+        <code>detection/testdata/benign.tsv</code> and <code>detection/testdata/attacks.tsv</code>.
+      </p>
+      <ul>
+        <li>
+          <strong>benign.tsv</strong> holds legitimate requests picked to look suspicious: SQL
+          keywords in searches, Markdown with backticks, code in support messages, non-Latin text,
+          and URLs in parameters.
+        </li>
+        <li>
+          <strong>attacks.tsv</strong> holds payloads, including double-encoded, form-encoded, and
+          MySQL-comment evasions.
+        </li>
+      </ul>
+      <p>
+        CI fails if a pattern change raises the false-positive count or lowers the detection count.
+      </p>
+      <div className="overflow-x-auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Sensitivity</th>
+              <th>False positives (89 legitimate requests)</th>
+              <th>Attacks detected (56 payloads)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>low</code> everywhere</td><td>7 (7.9%)</td><td>41 (73.2%)</td></tr>
+            <tr><td><code>medium</code> everywhere</td><td>9 (10.1%)</td><td>54 (96.4%)</td></tr>
+            <tr><td><code>strict</code> everywhere</td><td>9 (10.1%)</td><td>56 (100%)</td></tr>
+            <tr><td>Default rule set</td><td>9 (10.1%)</td><td>56 (100%)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Up to v2.3.1, the patterns flagged 32 of the first 84 legitimate samples (38%) and missed 4
+        of the first 51 attacks, including double-encoded SQL injection. To reproduce the table, run{' '}
+        <code>go test ./detection -run TestCorpus -v</code>. It also lists every sample the default
+        rule set gets wrong.
+      </p>
+      <Callout type="info" title="What the numbers don't tell you">
+        <p>
+          The corpora are small and hand-written. They show how the patterns treat known-tricky
+          inputs, not what your traffic will do.
+        </p>
+        <p>
+          The remaining false positives are inputs no pattern can tell apart from an attack:
+        </p>
+        <ul>
+          <li>SQL quoted in a support message</li>
+          <li>a hex id that is the whole value</li>
+          <li><code>../</code> in a search</li>
+          <li>an encoded <code>&lt;script&gt;</code> tag</li>
+          <li>absolute URLs in callback parameters (Sentinel doesn&apos;t know your own host)</li>
+        </ul>
+        <p>
+          Run in <code>ModeLog</code> first and review the Threats page before switching to{' '}
+          <code>ModeBlock</code>. Exclude routes that accept code or SQL.
+        </p>
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
@@ -716,9 +785,10 @@ curl -v "http://localhost:8080/api/ping?host=\\\`whoami\\\`"`}
         code={`$ curl -s "http://localhost:8080/api/users?id=1'+OR+'1'='1" | jq .
 {
   "error": "Request blocked by WAF",
-  "reason": "SQL Injection detected",
-  "request_id": "req_abc123def456"
-}`}
+  "code": "WAF_BLOCKED"
+}
+# The matched pattern and location are on the threat in the dashboard,
+# never in the response: an attacker learns nothing about which rule fired.`}
       />
 
       <h4>ModeLog Response (200 OK, event logged)</h4>
@@ -738,6 +808,23 @@ curl -v "http://localhost:8080/api/ping?host=\\\`whoami\\\`"`}
         against a production system could trigger alerts, IP bans, or lock out your own IP address
         if Auth Shield or IP reputation features are also enabled.
       </Callout>
+
+      <h3>Scanning with ZAP and sqlmap</h3>
+      <p>
+        The <code>security/scan</code> directory in the repository scans a deliberately injectable
+        app (<code>examples/scan-target</code>) with OWASP ZAP and sqlmap. Run it with the WAF off,
+        to confirm the holes are real, and then on <code>block</code>. A payload that gets through
+        belongs in <code>detection/testdata/attacks.tsv</code>. A legitimate request that gets
+        blocked belongs in <code>benign.tsv</code>.
+      </p>
+      <CodeBlock
+        language="bash"
+        showLineNumbers={false}
+        code={`cd security/scan
+SENTINEL_WAF=off   docker compose up -d --build target && docker compose run --rm sqlmap
+SENTINEL_WAF=block docker compose up -d --build target && docker compose run --rm sqlmap
+docker compose down`}
+      />
 
       {/* ------------------------------------------------------------------ */}
       {/*  CUSTOM RULE EXAMPLES                                               */}
