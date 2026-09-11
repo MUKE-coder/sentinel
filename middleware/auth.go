@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -153,11 +154,43 @@ func (as *AuthShield) Middleware() gin.HandlerFunc {
 		if statusCode >= 200 && statusCode < 300 {
 			// Successful login — reset IP failures
 			as.recordSuccess(clientIP, username)
+			as.emitLoginAudit(c, clientIP, username, true, "")
 		} else if statusCode >= 400 && statusCode < 500 {
 			// Failed login attempt
 			as.recordFailure(clientIP, username)
+			as.emitLoginAudit(c, clientIP, username, false, http.StatusText(statusCode))
 		}
 	}
+}
+
+// emitLoginAudit records a login attempt that reached the login handler as
+// an audit entry under sentinel.AuditResourceAuth — the evidence the PCI-DSS
+// report's authentication section counts. Attempts AuthShield rejected
+// before the handler (lockout, CAPTCHA) are recorded as threat events.
+func (as *AuthShield) emitLoginAudit(c *gin.Context, ip, username string, success bool, errText string) {
+	if as.pipe == nil {
+		return
+	}
+	as.pipe.EmitAudit(&sentinel.AuditLog{
+		ID:         uuid.New().String(),
+		Timestamp:  time.Now(),
+		UserID:     clipField(username, 128),
+		Action:     "LOGIN",
+		Resource:   sentinel.AuditResourceAuth,
+		ResourceID: as.config.LoginRoute,
+		IP:         ip,
+		UserAgent:  c.Request.UserAgent(),
+		Success:    success,
+		Error:      errText,
+	})
+}
+
+// clipField bounds a client-supplied string before it is stored.
+func clipField(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return strings.ToValidUTF8(s[:n], "")
 }
 
 // isIPLocked checks if the IP is currently locked out.

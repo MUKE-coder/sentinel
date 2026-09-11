@@ -77,3 +77,13 @@ type LifecycleStore interface {
 	Cleanup(ctx context.Context, olderThan time.Duration) error
 	Close() error
 }
+
+// AuditPruner is implemented by stores that prune audit logs on their own
+// schedule. Audit history is evidence and is kept for
+// StorageConfig.AuditRetentionDays rather than RetentionDays, so the
+// built-in stores' Cleanup leaves audit logs alone and Sentinel's background
+// job calls PruneAuditLogs separately. A custom Store that doesn't implement
+// it keeps whatever its Cleanup does.
+type AuditPruner interface {
+	PruneAuditLogs(ctx context.Context, olderThan time.Duration) error
+}

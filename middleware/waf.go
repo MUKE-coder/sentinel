@@ -233,6 +233,7 @@ func WAFMiddleware(config sentinel.WAFConfig, store storage.Store, pipe *pipelin
 			// StatusCode below.
 			c.Next()
 			threatEvent.StatusCode = c.Writer.Status()
+			c.Set(ThreatIDKey, threatEvent.ID)
 
 			if pipe != nil {
 				pipe.EmitThreat(threatEvent)

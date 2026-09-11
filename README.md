@@ -402,8 +402,11 @@ sentinel/
 
 | Driver | Config Value | Notes |
 |--------|-------------|-------|
-| Memory | `sentinel.Memory` | Default. No persistence, good for development. |
-| SQLite | `sentinel.SQLite` | Pure Go (no CGo), recommended for production. |
+| SQLite | `sentinel.SQLite` | **Default** — a `sentinel.db` file next to the binary. Pure Go (no CGo). In containers, put the file on a persistent volume: an ephemeral filesystem loses it on every deploy. |
+| Postgres | `sentinel.Postgres` | Recommended for production, and required for IP blocks to propagate across replicas. |
+| Memory | `sentinel.Memory` | Development and tests only. Everything is lost on restart, and compliance reports are refused in release mode. |
+
+Threat, user-activity, and performance records are pruned after `Storage.RetentionDays` (default 90). Audit log entries are kept for `Storage.AuditRetentionDays` (default 365 — PCI-DSS 10.5.1 requires 12 months of audit history).
 
 ## AI Providers
 

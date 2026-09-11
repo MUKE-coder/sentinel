@@ -3,6 +3,7 @@ package reports
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	sentinel "github.com/MUKE-coder/sentinel/v2/core"
@@ -11,12 +12,117 @@ import (
 
 // Generator produces compliance reports from stored Sentinel data.
 type Generator struct {
-	store storage.Store
+	store  storage.Store
+	source SourceInfo
 }
 
 // NewGenerator creates a new compliance report generator.
 func NewGenerator(store storage.Store) *Generator {
 	return &Generator{store: store}
+}
+
+// SourceInfo describes the store behind a Generator so reports can say how
+// durable and complete their data is. Sentinel's API server sets it from the
+// mounted config; the zero value means "unknown", and reports say so.
+type SourceInfo struct {
+	StorageDriver        string
+	RetentionDays        int
+	AuditRetentionDays   int
+	UserActivityRecorded bool
+}
+
+// SetSourceInfo tells the generator about the store behind it.
+func (g *Generator) SetSourceInfo(info SourceInfo) {
+	g.source = info
+}
+
+// Provenance is attached to every report: where the data came from, how long
+// it is kept, and the ways it can fall short of a complete record. A
+// compliance report is only as good as the data under it — these fields
+// exist so an empty or short section can't pass for a clean one.
+type Provenance struct {
+	StorageDriver      string     `json:"storage_driver,omitempty"`
+	Durable            bool       `json:"durable"`
+	RetentionDays      int        `json:"retention_days,omitempty"`
+	AuditRetentionDays int        `json:"audit_retention_days,omitempty"`
+	OldestThreatEvent  *time.Time `json:"oldest_threat_event,omitempty"`
+	OldestAuditEntry   *time.Time `json:"oldest_audit_entry,omitempty"`
+	Warnings           []string   `json:"warnings,omitempty"`
+}
+
+func (p *Provenance) warn(format string, args ...any) {
+	p.Warnings = append(p.Warnings, fmt.Sprintf(format, args...))
+}
+
+// provenance describes the data behind a report whose window starts at
+// windowStart and spans window.
+func (g *Generator) provenance(ctx context.Context, windowStart time.Time, window time.Duration) Provenance {
+	src := g.source
+	p := Provenance{
+		StorageDriver:      src.StorageDriver,
+		Durable:            src.StorageDriver == string(sentinel.SQLite) || src.StorageDriver == string(sentinel.Postgres),
+		RetentionDays:      src.RetentionDays,
+		AuditRetentionDays: src.AuditRetentionDays,
+		OldestThreatEvent:  g.oldestThreat(ctx),
+		OldestAuditEntry:   g.oldestAuditEntry(ctx),
+	}
+
+	switch src.StorageDriver {
+	case "":
+		p.warn("The storage backend was not reported to the report generator, so durability and retention are unknown.")
+	case string(sentinel.Memory):
+		p.warn("Data is held in memory and lost on every restart — this report covers only activity since the process last started.")
+	}
+
+	windowDays := int(window.Hours() / 24)
+	if src.RetentionDays > 0 && windowDays > src.RetentionDays {
+		p.warn("The report window (%d days) is longer than Storage.RetentionDays (%d): threat and user-activity records older than %d days have been deleted.",
+			windowDays, src.RetentionDays, src.RetentionDays)
+	}
+	if src.AuditRetentionDays > 0 && windowDays > src.AuditRetentionDays {
+		p.warn("The report window (%d days) is longer than Storage.AuditRetentionDays (%d): audit entries older than %d days have been deleted.",
+			windowDays, src.AuditRetentionDays, src.AuditRetentionDays)
+	}
+
+	oldest := p.OldestThreatEvent
+	if oldest == nil || (p.OldestAuditEntry != nil && p.OldestAuditEntry.Before(*oldest)) {
+		oldest = p.OldestAuditEntry
+	}
+	switch {
+	case oldest == nil:
+		p.warn("No threat events or audit entries are stored. Empty sections mean there is no data, not a clean record.")
+	case oldest.After(windowStart.Add(24 * time.Hour)):
+		p.warn("The oldest stored record is from %s but the report window starts %s: the start of the window has no data (a new install, an in-memory store that restarted, or records removed by retention).",
+			oldest.UTC().Format(time.DateOnly), windowStart.UTC().Format(time.DateOnly))
+	}
+	return p
+}
+
+func (g *Generator) oldestThreat(ctx context.Context) *time.Time {
+	threats, _, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
+		Page:      1,
+		PageSize:  1,
+		SortBy:    "timestamp",
+		SortOrder: "asc",
+	})
+	if err != nil || len(threats) == 0 {
+		return nil
+	}
+	return &threats[0].Timestamp
+}
+
+// oldestAuditEntry returns the timestamp of the earliest audit entry.
+// ListAuditLogs is newest-first, so the oldest entry is the last page of one.
+func (g *Generator) oldestAuditEntry(ctx context.Context) *time.Time {
+	_, total, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{Page: 1, PageSize: 1})
+	if err != nil || total == 0 {
+		return nil
+	}
+	logs, _, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{Page: int(total), PageSize: 1})
+	if err != nil || len(logs) == 0 {
+		return nil
+	}
+	return &logs[0].Timestamp
 }
 
 // noteTruncated records a report section whose listing hit its row cap.
@@ -51,6 +157,9 @@ type GDPRReport struct {
 	// Truncated names the sections whose listing hit its row cap and is not
 	// the complete record.
 	Truncated []string `json:"truncated,omitempty"`
+
+	// Provenance describes the data behind the report and its limits.
+	Provenance Provenance `json:"provenance"`
 }
 
 // GDPRUserAccess summarizes data access for a single user.
@@ -175,6 +284,14 @@ func (g *Generator) GenerateGDPR(ctx context.Context, window time.Duration) (*GD
 		UnusualAccessCount: int(unusualTotal),
 	}
 
+	report.Provenance = g.provenance(ctx, start, window)
+	if g.source.StorageDriver != "" && !g.source.UserActivityRecorded {
+		report.Provenance.warn("Config.UserExtractor is not set, so no per-user activity is recorded: user_data_access is empty regardless of what users actually accessed.")
+	}
+	if exportsTotal == 0 {
+		report.Provenance.warn("data_exports lists READ audit entries, which Sentinel's GORM plugin does not record (it records CREATE, UPDATE, and DELETE): the section stays empty unless your application writes READ entries itself.")
+	}
+
 	return report, nil
 }
 
@@ -194,6 +311,9 @@ type PCIDSSReport struct {
 	// Truncated names the sections whose listing hit its row cap and is not
 	// the complete record.
 	Truncated []string `json:"truncated,omitempty"`
+
+	// Provenance describes the data behind the report and its limits.
+	Provenance Provenance `json:"provenance"`
 }
 
 // PCIAuthEvents contains authentication event metrics.
@@ -222,9 +342,10 @@ func (g *Generator) GeneratePCIDSS(ctx context.Context) (*PCIDSSReport, error) {
 		GeneratedAt: now,
 	}
 
-	// Authentication events from audit logs
+	// Authentication events: logins AuthShield observed on the host app and
+	// logins to the Sentinel dashboard.
 	authLogs, total, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{
-		Resource:  "auth",
+		Resource:  sentinel.AuditResourceAuth,
 		StartTime: &start,
 		EndTime:   &now,
 		Page:      1,
@@ -299,6 +420,11 @@ func (g *Generator) GeneratePCIDSS(ctx context.Context) (*PCIDSSReport, error) {
 		report.Summary = summarizeIncidents(report.SecurityIncidents)
 	}
 
+	report.Provenance = g.provenance(ctx, start, pciWindow)
+	if g.source.AuditRetentionDays > 0 && g.source.AuditRetentionDays < 365 {
+		report.Provenance.warn("Storage.AuditRetentionDays is %d: PCI-DSS 10.5.1 requires 12 months of audit history.", g.source.AuditRetentionDays)
+	}
+
 	return report, nil
 }
 
@@ -347,6 +473,9 @@ type SOC2Report struct {
 	// Truncated names the sections whose listing hit its row cap and is not
 	// the complete record.
 	Truncated []string `json:"truncated,omitempty"`
+
+	// Provenance describes the data behind the report and its limits.
+	Provenance Provenance `json:"provenance"`
 }
 
 // SOC2Monitoring contains security monitoring evidence.
@@ -465,6 +594,8 @@ func (g *Generator) GenerateSOC2(ctx context.Context, window time.Duration) (*SO
 		report.Summary.TotalThreatsDetected = int(stats.TotalThreats)
 		report.Summary.TotalThreatsBlocked = int(stats.BlockedCount)
 	}
+
+	report.Provenance = g.provenance(ctx, start, window)
 
 	return report, nil
 }

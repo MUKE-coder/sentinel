@@ -47,7 +47,7 @@ func NewServer(store storage.Store, pipe *pipeline.Pipeline, ipMgr *intelligence
 		pipe:        pipe,
 		ipManager:   ipMgr,
 		scoreEngine: scoreEngine,
-		reportGen:   reports.NewGenerator(store),
+		reportGen:   newReportGenerator(store, config),
 		config:      config,
 		wsHub:       NewWSHub(),
 		loginRL:     NewLoginRateLimiter(),
@@ -245,6 +245,7 @@ func (s *Server) handleLogin(c *gin.Context) {
 	passOK := subtle.ConstantTimeCompare([]byte(req.Password), []byte(s.config.Dashboard.Password)) == 1
 	if !userOK || !passOK {
 		s.loginRL.RecordFailure(clientIP)
+		s.auditLogin(c, req.Username, false)
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "Invalid credentials",
 			"code":  "UNAUTHORIZED",
@@ -260,6 +261,8 @@ func (s *Server) handleLogin(c *gin.Context) {
 		})
 		return
 	}
+
+	s.auditLogin(c, req.Username, true)
 
 	c.JSON(http.StatusOK, gin.H{
 		"token":      token,
@@ -336,6 +339,7 @@ func (s *Server) handleResolveThreat(c *gin.Context) {
 	id := c.Param("id")
 	resolved := true
 	err := s.store.UpdateThreat(c.Request.Context(), id, sentinel.ThreatUpdate{Resolved: &resolved})
+	s.auditDashboard(c, "UPDATE", auditResourceThreat, id, nil, sentinel.JSONMap{"resolved": true}, err)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "INTERNAL_ERROR"})
 		return
@@ -351,6 +355,7 @@ func (s *Server) handleFalsePositive(c *gin.Context) {
 		FalsePositive: &fp,
 		Resolved:      &resolved,
 	})
+	s.auditDashboard(c, "UPDATE", auditResourceThreat, id, nil, sentinel.JSONMap{"false_positive": true, "resolved": true}, err)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "INTERNAL_ERROR"})
 		return
@@ -421,7 +426,9 @@ func (s *Server) handleBlockActor(c *gin.Context) {
 	}
 
 	if s.ipManager != nil {
-		if err := s.ipManager.BlockIP(ctx, ip, req.Reason, expiry); err != nil {
+		err := s.ipManager.BlockIP(ctx, ip, req.Reason, expiry)
+		s.auditDashboard(c, "CREATE", auditResourceIPBlock, ip, nil, blockDetails(req.Reason, req.Permanent, expiry), err)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "INTERNAL_ERROR"})
 			return
 		}
@@ -486,7 +493,9 @@ func (s *Server) handleBlockIP(c *gin.Context) {
 	}
 
 	if s.ipManager != nil {
-		if err := s.ipManager.BlockIP(c.Request.Context(), req.IP, req.Reason, expiry); err != nil {
+		err := s.ipManager.BlockIP(c.Request.Context(), req.IP, req.Reason, expiry)
+		s.auditDashboard(c, "CREATE", auditResourceIPBlock, req.IP, nil, blockDetails(req.Reason, req.Permanent, expiry), err)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "INTERNAL_ERROR"})
 			return
 		}
@@ -506,7 +515,9 @@ func (s *Server) handleUnblockIP(c *gin.Context) {
 	ip = strings.ReplaceAll(ip, "_", "/")
 
 	if s.ipManager != nil {
-		if err := s.ipManager.UnblockIP(c.Request.Context(), ip); err != nil {
+		err := s.ipManager.UnblockIP(c.Request.Context(), ip)
+		s.auditDashboard(c, "DELETE", auditResourceIPBlock, ip, nil, nil, err)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "INTERNAL_ERROR"})
 			return
 		}

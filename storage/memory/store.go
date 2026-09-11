@@ -13,8 +13,11 @@ import (
 	"github.com/MUKE-coder/sentinel/v2/storage"
 )
 
-// Ensure Store implements storage.Store.
-var _ storage.Store = (*Store)(nil)
+// Ensure Store implements storage.Store and prunes audit logs separately.
+var (
+	_ storage.Store       = (*Store)(nil)
+	_ storage.AuditPruner = (*Store)(nil)
+)
 
 // Store is an in-memory implementation of the storage.Store interface.
 type Store struct {
@@ -272,6 +275,12 @@ func (s *Store) ListAuditLogs(ctx context.Context, filter sentinel.AuditFilter) 
 		filtered = append(filtered, l)
 	}
 
+	// Newest first by timestamp, matching the SQL stores. Insertion order is
+	// not time order: the pipeline's workers can deliver entries out of order.
+	sort.SliceStable(filtered, func(i, j int) bool {
+		return filtered[i].Timestamp.After(filtered[j].Timestamp)
+	})
+
 	total := int64(len(filtered))
 	start := (filter.Page - 1) * filter.PageSize
 	if start >= int(total) {
@@ -498,7 +507,9 @@ func (s *Store) Migrate(ctx context.Context) error {
 	return nil
 }
 
-// Cleanup removes events older than the specified duration.
+// Cleanup removes threat, user-activity, and performance records older than
+// the specified duration. Audit logs keep their own retention — see
+// PruneAuditLogs.
 func (s *Store) Cleanup(ctx context.Context, olderThan time.Duration) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -524,6 +535,36 @@ func (s *Store) Cleanup(ctx context.Context, olderThan time.Duration) error {
 	}
 	s.perfMetrics = newMetrics
 
+	for userID, activities := range s.userActivities {
+		kept := activities[:0]
+		for _, a := range activities {
+			if !a.Timestamp.Before(cutoff) {
+				kept = append(kept, a)
+			}
+		}
+		if len(kept) == 0 {
+			delete(s.userActivities, userID)
+		} else {
+			s.userActivities[userID] = kept
+		}
+	}
+
+	return nil
+}
+
+// PruneAuditLogs removes audit log entries older than the specified duration.
+func (s *Store) PruneAuditLogs(ctx context.Context, olderThan time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	cutoff := time.Now().Add(-olderThan)
+	kept := make([]*sentinel.AuditLog, 0, len(s.auditLogs))
+	for _, l := range s.auditLogs {
+		if !l.Timestamp.Before(cutoff) {
+			kept = append(kept, l)
+		}
+	}
+	s.auditLogs = kept
 	return nil
 }
 
@@ -553,6 +594,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]*sentinel.UserSummary, error) 
 
 		var email string
 		var lastSeen time.Time
+		var linkedThreats int64 // threats the WAF logged on this user's requests
 		for _, a := range activities {
 			if a.UserEmail != "" {
 				email = a.UserEmail
@@ -560,13 +602,16 @@ func (s *Store) ListUsers(ctx context.Context) ([]*sentinel.UserSummary, error) 
 			if a.Timestamp.After(lastSeen) {
 				lastSeen = a.Timestamp
 			}
+			if a.ThreatID != "" {
+				linkedThreats++
+			}
 		}
 
 		result = append(result, &sentinel.UserSummary{
 			UserID:        userID,
 			Email:         email,
 			ActivityCount: int64(len(activities)),
-			ThreatCount:   threatCounts[userID],
+			ThreatCount:   threatCounts[userID] + linkedThreats,
 			LastSeen:      lastSeen,
 		})
 	}

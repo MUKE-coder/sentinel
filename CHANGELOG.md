@@ -2,6 +2,69 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.3.0] - Unreleased
+
+The report sections and dashboard pages that v2.2.2 admitted were reading
+data nothing wrote now have real data behind them — and every report says
+how far that data can be trusted.
+
+### Added
+
+- **User activity is recorded.** `Config.UserExtractor` was never read, so
+  no per-user activity was ever stored: the Users page, the GDPR report's
+  per-user section, and anomaly detection (which only analyses activity) all
+  saw nothing. When it is set, Sentinel now records one activity per
+  authenticated request — the matched route pattern (no record IDs), method,
+  status, duration, client IP, and, in WAF log mode, a link to the threat
+  logged on that request. The extractor runs after the handler, so it can
+  read whatever your auth middleware put on the context. Sentinel's own
+  dashboard routes are not recorded.
+- **Dashboard actions are audited.** Blocking and unblocking IPs, unlocking
+  AuthShield users, changing WAF mode or rules, adding and deleting custom
+  rules, changing alert severity or rate limits, resetting rate-limit
+  counters, and resolving threats or marking false positives each write an
+  audit entry: resource `sentinel.*`, the dashboard user as actor, role
+  `sentinel_admin`, before/after state, and success or error. Before, an
+  operator could switch the WAF to log-only or unblock an attacker without a
+  trace.
+- **Login attempts are audited.** Logins AuthShield observes on your app and
+  logins to the dashboard are recorded under `Resource: "auth"`
+  (`sentinel.AuditResourceAuth`), so the PCI-DSS report's `auth_events`
+  section finally has data.
+- **Report provenance.** Every report carries a `provenance` block: storage
+  driver, whether it is durable, retention settings, the oldest stored threat
+  and audit entry, and warnings whenever the data can't support the report —
+  in-memory storage, a window longer than retention, a window that starts
+  before the oldest record, an empty store, audit retention under PCI-DSS's
+  12 months, no `UserExtractor`, and no source of `READ` audit entries.
+- **`Storage.AuditRetentionDays`** (default 365). Audit logs keep their own
+  retention; `RetentionDays` (default 90) no longer deletes them. The new
+  `storage.AuditPruner` interface is implemented by the built-in stores.
+- **`ValidateConfig`** flags anomaly detection without a `UserExtractor`
+  (error — the detector never runs), negative retention (error — the cutoff
+  lands in the future and deletes everything), audit retention under 12
+  months (warning), and in-memory storage (warning).
+
+### 🔥 Fix
+
+- **SQLite / Postgres `ListUsers`, `GetAttackTrends`, `GetGeoStats`, and
+  `GetTopTargets` were stubs** returning nothing, so the Users page and the
+  attack-trend, geography, and top-target charts were empty on the default
+  store. All four are implemented.
+- **The memory store never pruned user activity**; it does now. Its audit
+  log listing is sorted newest-first by timestamp, like the SQL stores.
+
+### Behavior changes
+
+- Compliance reports on in-memory storage in release mode return
+  **409 `EPHEMERAL_STORAGE`** unless the request passes
+  `?acknowledge_ephemeral=true`.
+- Audit logs are kept 365 days by default instead of 90. The built-in stores'
+  `Cleanup` no longer deletes audit entries; `PruneAuditLogs` does, on
+  `AuditRetentionDays`. Budget for the extra rows on SQLite.
+- With `UserExtractor` set, every authenticated request writes an activity
+  row, alongside the per-request performance row Sentinel already writes.
+
 ## [2.2.2] - 2026-09-11
 
 Security patch. Every fix below came out of verifying an external review of
