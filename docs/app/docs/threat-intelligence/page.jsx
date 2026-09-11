@@ -348,15 +348,16 @@ func ComputeRiskScore(actor *sentinel.ThreatActor) int {
 
       <p>
         Reputation results are cached for 24 hours to minimize API calls. The cache is maintained
-        in memory and cleared on application restart. When <code>AutoBlock</code> is enabled and an
-        IP exceeds the threshold, it is immediately added to the blocklist via the IP Manager.
+        in memory and cleared on application restart. When <code>AutoBlock</code> is enabled and a
+        checked IP exceeds the threshold, it is immediately added to the blocklist via the IP Manager.
       </p>
 
-      <Callout type="warning" title="AbuseIPDB Rate Limits">
-        The free AbuseIPDB plan allows 1,000 checks per day. If your application processes a high
-        volume of unique attacker IPs, consider upgrading your AbuseIPDB plan or increasing{' '}
-        <code>MinAbuseScore</code> to reduce the number of reputation lookups triggered by
-        low-confidence threats.
+      <Callout type="warning" title="Checks run on demand">
+        A reputation check happens when an IP is looked up — from an actor's page in the dashboard,
+        or <code>GET /sentinel/api/ip/:ip/reputation</code>. Sentinel does not yet check IPs
+        automatically as traffic arrives, so <code>AutoBlock</code> only acts on IPs someone has
+        looked up, and a new deployment gets no reputation data on its own. Checking on first sight
+        and bulk blocklist feeds are planned. The free AbuseIPDB plan allows 1,000 checks per day.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}

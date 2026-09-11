@@ -29,11 +29,11 @@ export default function RateLimiting() {
           },
           {
             q: 'How do sliding window counters work in Sentinel?',
-            a: 'Sliding window counters track request counts within a rolling time window. When a request arrives, Sentinel checks if the window has expired and resets the counter if needed, then increments it. A background goroutine cleans up expired counters every 30 seconds.',
+            a: 'The default sliding window counts requests over the window ending now: the previous window\'s count, weighted by how much of it still overlaps, plus the current window\'s count. That stops twice the limit from passing in a moment either side of a window boundary. Fixed window and token bucket are also available via RateLimitConfig.Strategy. A background goroutine removes idle counters every 30 seconds.',
           },
           {
             q: 'How do I set per-route rate limits in Sentinel?',
-            a: 'Use the ByRoute field with a map of route paths to Limit structs. Each key is an exact route path like /api/login, and the value specifies maximum requests and time window. Route limits are tracked per IP, so each client gets its own counter per route.',
+            a: 'Use the ByRoute field with a map of route paths to Limit structs. Keys are exact paths like /api/login or wildcard patterns like /v1/* and /api/apps/*/products; all paths matching one pattern share its counter. Route limits are tracked per IP, so each client gets its own counter per route.',
           },
           {
             q: 'What happens when a client is rate limited?',
@@ -431,10 +431,13 @@ Global: &sentinel.Limit{Requests: 5000, Window: time.Minute}`}
         route-limited path.
       </p>
 
-      <Callout type="info" title="Exact Path Matching">
-        Route keys must be exact paths. The path <code>/api/login</code> will not match{' '}
-        <code>/api/login/</code> (trailing slash) or <code>/api/login?foo=bar</code> (query
-        parameters are stripped). Use the path as it appears in your Gin route definitions.
+      <Callout type="info" title="Exact Paths and Wildcard Patterns">
+        A plain key matches exactly: <code>/api/login</code> does not match <code>/api/login/</code>{' '}
+        (query strings are ignored). Keys can also be patterns — <code>/v1/*</code> or{' '}
+        <code>/v1/**</code> for a whole subtree, <code>/api/apps/*/products</code> for one segment,
+        or <code>/api/apps/*/products/**</code> for both. Every path matching a pattern shares that
+        pattern's counter, so rotating sub-paths can't reset a client's budget. When an exact key and
+        a pattern both match, the exact key wins; otherwise the longest pattern does.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
@@ -443,54 +446,58 @@ Global: &sentinel.Limit{Requests: 5000, Window: time.Minute}`}
 
       <h2 id="how-it-works">How It Works</h2>
       <p>
-        Sentinel uses sliding window counters stored entirely in memory. Each counter tracks a
-        request count and a window expiration timestamp.
+        Counters live in process memory, one per key (e.g. <code>ip:1.2.3.4</code> or{' '}
+        <code>route:/api/login:1.2.3.4</code>). How a counter decides is set by{' '}
+        <code>RateLimitConfig.Strategy</code>:
       </p>
-      <ol>
-        <li>
-          When a request arrives, Sentinel looks up the counter for the relevant key (e.g.,{' '}
-          <code>ip:1.2.3.4</code>).
-        </li>
-        <li>
-          If no counter exists, or the current time is past the window expiration, a new counter is
-          created with a count of 1 and a window end of <code>now + Window</code>.
-        </li>
-        <li>
-          If the counter exists and the window has not expired, the count is incremented.
-        </li>
-        <li>
-          If the count exceeds the configured limit, the request is rejected with a{' '}
-          <code>429</code> status.
-        </li>
-      </ol>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th>How it counts</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>sentinel.SlidingWindow</code> (default)</td>
+            <td>
+              Keeps the current and previous window's counts. A request is allowed while{' '}
+              <code>previous × overlap + current</code> is under the limit, where <em>overlap</em> is
+              how much of the previous window still falls inside the window ending now. At a boundary
+              the whole previous window still counts, so a burst straddling it is limited. Rejected
+              requests are not counted.
+            </td>
+          </tr>
+          <tr>
+            <td><code>sentinel.FixedWindow</code></td>
+            <td>
+              A window starts at a client's first request and resets completely when it ends. Cheap,
+              but up to twice the limit can pass across a boundary. Rejected requests count.
+            </td>
+          </tr>
+          <tr>
+            <td><code>sentinel.TokenBucket</code></td>
+            <td>
+              A bucket holding up to <code>Requests</code> tokens, refilled at <code>Requests</code>{' '}
+              per <code>Window</code>. Each request spends one; a burst up to the limit is allowed,
+              then a steady rate.
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
       <p>
-        A background goroutine runs every <strong>30 seconds</strong> to clean up expired counters,
-        preventing unbounded memory growth. The cleanup removes any counter whose window has passed.
+        When a limit is exceeded the request is rejected with <code>429</code>. A background goroutine
+        runs every <strong>30 seconds</strong> and removes counters that no longer affect any decision,
+        preventing unbounded memory growth. An unknown strategy falls back to sliding window and is
+        reported by <code>ValidateConfig</code>.
       </p>
 
-      <CodeBlock
-        language="go"
-        showLineNumbers={false}
-        code={`// Internal counter structure (simplified)
-type rateLimitEntry struct {
-    count     int       // Number of requests in the current window
-    windowEnd time.Time // When the current window expires
-}
-
-// Cleanup runs every 30 seconds, removing expired entries
-func (rl *RateLimiter) cleanup() {
-    ticker := time.NewTicker(30 * time.Second)
-    for range ticker.C {
-        now := time.Now()
-        for key, entry := range rl.counters {
-            if now.After(entry.windowEnd) {
-                delete(rl.counters, key)
-            }
-        }
-    }
-}`}
-      />
+      <Callout type="warning" title="Before v2.3.0">
+        <code>Strategy</code> was never read: every limit was a fixed window whatever the config said.
+        If you relied on that behavior, set <code>Strategy: sentinel.FixedWindow</code> explicitly.
+      </Callout>
 
       <Callout type="info" title="Thread Safety">
         All counter operations are protected by a read-write mutex. Reads (checking remaining
@@ -530,8 +537,12 @@ func (rl *RateLimiter) cleanup() {
       </p>
 
       <Callout type="success" title="No Restart Required">
-        Changes made through the dashboard (editing route limits, resetting counters) take effect
-        immediately. There is no need to restart or redeploy your application.
+        Changes made through the dashboard (editing route limits, resetting counters) take effect on
+        live requests immediately. Edits are validated — a non-positive window, a route without a
+        leading <code>/</code>, or an unmatchable pattern is rejected with 400 and nothing changes —
+        and every change is written to the audit log. Route-limit edits are not persisted: a restart
+        goes back to your configured <code>ByRoute</code>. (Before v2.3.0, route-limit edits updated
+        only the dashboard's copy of the config and were never enforced.)
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
@@ -649,13 +660,13 @@ curl -v http://localhost:8080/api/hello 2>&1
             </td>
           </tr>
           <tr>
-            <td><strong>Exact path matching</strong></td>
+            <td><strong>Dashboard edits are not persisted</strong></td>
             <td>
-              Per-route limits use exact string matching on the request path. Patterns, wildcards,
-              and path parameters are not supported.
+              Route limits changed from the dashboard apply until the next restart, then the
+              configured <code>ByRoute</code> takes over again.
             </td>
             <td>
-              List each specific path you want to limit in the <code>ByRoute</code> map.
+              Copy a limit you want to keep into your config.
             </td>
           </tr>
         </tbody>

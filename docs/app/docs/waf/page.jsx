@@ -65,10 +65,11 @@ export default function WAF() {
         dashboard.
       </p>
 
-      <Callout type="info" title="Zero False Positives by Default">
-        Sentinel ships with carefully tuned regex patterns at multiple strictness levels. Start with
-        the defaults, observe traffic in <code>ModeLog</code>, and adjust sensitivity per category as
-        needed for your application.
+      <Callout type="info" title="Tune Before You Block">
+        Each built-in pattern is scoped to the parts of a request where its attack can actually occur,
+        but no pattern set is free of false positives — a support ticket quoting SQL will look like
+        SQL. Start with the defaults in <code>ModeLog</code>, watch the dashboard, and adjust
+        sensitivity per category before switching to <code>ModeBlock</code>.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
@@ -147,8 +148,21 @@ func main() {
             <td>Detects threats and <strong>rejects the request with HTTP 403 Forbidden</strong>. The response includes a JSON body with the block reason.</td>
             <td>Production enforcement</td>
           </tr>
+          <tr>
+            <td>Challenge</td>
+            <td><code>sentinel.ModeChallenge</code></td>
+            <td>Rejects the request with <strong>HTTP 429</strong>, <code>Retry-After: 30</code>, and code <code>WAF_CHALLENGE</code>. There is no interactive challenge page.</td>
+            <td>Slowing automated clients</td>
+          </tr>
         </tbody>
       </table>
+
+      <p>
+        Any other value — including a typo such as <code>"Block"</code> — falls through to log mode
+        and blocks nothing. <code>ValidateConfig</code> reports it as an error, and the dashboard API
+        rejects it. The mode can be changed on the running WAF with{' '}
+        <code>PUT /sentinel/api/waf/rules</code> (since v2.3.0; not persisted across a restart).
+      </p>
 
       <h3>ModeLog (Detect Only)</h3>
       <p>
@@ -191,8 +205,7 @@ Content-Type: application/json
 
 {
   "error": "Request blocked by WAF",
-  "reason": "SQL Injection detected",
-  "request_id": "abc123"
+  "code": "WAF_BLOCKED"
 }`}
       />
 
@@ -200,6 +213,8 @@ Content-Type: application/json
         Start with <code>sentinel.ModeLog</code> in production for 1-2 weeks to observe detections
         and identify any false positives. Review the dashboard, tune rule sensitivities and exclusions,
         then switch to <code>sentinel.ModeBlock</code> when you are confident in the configuration.
+        After that, stage each new custom rule with <code>Action: "log"</code> — it is recorded but
+        never blocks — and promote it to <code>"block"</code> once it has proven itself.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
@@ -277,9 +292,10 @@ Content-Type: application/json
 
       <h3>Strictness Levels</h3>
       <p>
-        Each rule category supports three strictness levels that control how aggressively patterns are
-        matched. Higher strictness catches more edge cases but may produce more false positives for
-        certain applications.
+        Each rule category supports four strictness levels. Every built-in pattern carries a confidence
+        score (50 for the bare SQL-comment pattern, up to 85 for the most specific ones), and a level
+        keeps the patterns at or above its floor. Higher strictness catches more edge cases but may
+        produce more false positives for certain applications.
       </p>
 
       <table>
@@ -294,20 +310,32 @@ Content-Type: application/json
           <tr>
             <td>Off</td>
             <td><code>sentinel.RuleOff</code></td>
-            <td>Completely disables this rule category. No patterns are evaluated.</td>
+            <td>Disables this rule category. No matches are recorded.</td>
           </tr>
           <tr>
-            <td>Basic</td>
-            <td><code>sentinel.RuleBasic</code></td>
-            <td>Matches only the most obvious and high-confidence attack patterns. Lowest false positive rate.</td>
+            <td>Low</td>
+            <td><code>sentinel.RuleLow</code></td>
+            <td>Only the most precise patterns (confidence ≥ 80). Lowest false-positive rate.</td>
+          </tr>
+          <tr>
+            <td>Medium</td>
+            <td><code>sentinel.RuleMedium</code></td>
+            <td>Drops the noisiest patterns (confidence below 60).</td>
           </tr>
           <tr>
             <td>Strict</td>
             <td><code>sentinel.RuleStrict</code></td>
-            <td>Matches a comprehensive set of patterns including encoded and obfuscated variants. Highest coverage, but may require exclusions for some applications.</td>
+            <td>Every pattern, including encoded and obfuscated variants. Also what an empty value means.</td>
           </tr>
         </tbody>
       </table>
+
+      <Callout type="info" title="Enforced since v2.3.0">
+        Before v2.3.0 the levels were never read, so every pattern ran regardless. The defaults keep
+        every pattern — a default config detects exactly what it always did — but a category set to
+        Off, Low, or Medium now really changes detection. Levels can be changed on the running WAF with{' '}
+        <code>PUT /sentinel/api/waf/rules</code>.
+      </Callout>
 
       <CodeBlock
         language="go"
@@ -319,7 +347,7 @@ Content-Type: application/json
         SQLInjection:     sentinel.RuleStrict,  // Maximum SQL injection coverage
         XSS:              sentinel.RuleStrict,  // Maximum XSS coverage
         PathTraversal:    sentinel.RuleStrict,  // Catch encoded traversal sequences
-        CommandInjection: sentinel.RuleBasic,   // Basic only — reduces false positives for CLI tools
+        CommandInjection: sentinel.RuleLow,     // Most precise patterns only — fewer false positives
         SSRF:             sentinel.RuleMedium,  // Balanced SSRF detection
         XXE:              sentinel.RuleStrict,  // Full XXE protection
         LFI:              sentinel.RuleStrict,  // Full LFI protection
@@ -383,7 +411,7 @@ Content-Type: application/json
           <tr>
             <td><code>Action</code></td>
             <td><code>string</code></td>
-            <td>Action to take when the pattern matches: <code>"block"</code> (reject with 403) or <code>"log"</code> (record but allow). This overrides the global WAF mode for this specific rule.</td>
+            <td><code>"block"</code> (or empty) lets the global WAF mode decide what happens to a matching request. <code>"log"</code> records the match but never blocks — even in block mode. Any other value is enforced as <code>"block"</code> and reported by <code>ValidateConfig</code>.</td>
           </tr>
           <tr>
             <td><code>Enabled</code></td>
@@ -411,8 +439,8 @@ Content-Type: application/json
             <td>The raw query string (e.g., <code>id=1&name=test</code>)</td>
           </tr>
           <tr>
-            <td><code>"headers"</code></td>
-            <td>All HTTP request headers concatenated (key: value pairs)</td>
+            <td><code>"header"</code></td>
+            <td>Every HTTP request header value, checked one at a time</td>
           </tr>
           <tr>
             <td><code>"body"</code></td>
@@ -447,7 +475,7 @@ Content-Type: application/json
         ID:        "block-scanner-bots",
         Name:      "Block known scanner user agents",
         Pattern:   \`(?i)(sqlmap|nikto|nessus|dirbuster|gobuster|masscan|nmap)\`,
-        AppliesTo: []string{"headers"},
+        AppliesTo: []string{"header"},
         Severity:  sentinel.SeverityHigh,
         Action:    "block",
         Enabled:   true,
@@ -465,9 +493,11 @@ Content-Type: application/json
       />
 
       <Callout type="info" title="Rule Action vs Global Mode">
-        Each custom rule has its own <code>Action</code> field that overrides the global WAF mode for
-        that specific rule. This means you can set the WAF to <code>ModeLog</code> globally but have
-        individual custom rules that block, or vice versa. Built-in rules always follow the global mode.
+        <code>Action: "log"</code> can only make a rule <em>quieter</em> than the global mode: in
+        block mode, a request that trips only log-action rules is recorded and allowed through. It
+        cannot make a rule block while the WAF is in log mode. A request that trips a log-action rule
+        and an enforced rule (or a built-in pattern) is still blocked. Built-in rules always follow
+        the global mode. <code>Action</code> was never read before v2.3.0.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
@@ -524,9 +554,11 @@ Content-Type: application/json
 
       <Callout type="warning" title="Be Careful with IP Exclusions">
         Excluded IPs bypass all WAF rules including custom rules. Only exclude IPs you fully trust.
-        If an attacker can spoof a trusted IP (e.g., via the <code>X-Forwarded-For</code> header),
-        they could bypass the WAF. Make sure your reverse proxy sets the client IP correctly and that
-        Gin is configured to trust the right proxy headers.
+        If an attacker could choose their own IP they could bypass the WAF, so Sentinel ignores{' '}
+        <code>X-Forwarded-For</code> unless the direct connection comes from one of your{' '}
+        <code>WAF.TrustedProxies</code>, and then reads the chain right to left, skipping your proxies
+        — the entries a client writes itself are never trusted. Set <code>TrustedProxies</code> to
+        your load balancer's addresses; Gin's own trusted-proxy setting is not used.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}

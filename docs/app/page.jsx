@@ -112,7 +112,7 @@ export default function Home() {
           },
           {
             question: 'Does Sentinel require any configuration?',
-            answer: 'No. Sentinel works out of the box with zero configuration using sentinel.Config{}. This gives you sensible defaults including in-memory storage and a dashboard at /sentinel/ui. You can optionally enable WAF, rate limiting, AI analysis, alerting, and other features as needed.',
+            answer: 'No. Sentinel works out of the box with zero configuration using sentinel.Config{}. This gives you sensible defaults including SQLite storage (a sentinel.db file) and a dashboard at /sentinel/ui. You can optionally enable WAF, rate limiting, AI analysis, alerting, and other features as needed.',
           },
           {
             question: 'What security features does Sentinel provide?',

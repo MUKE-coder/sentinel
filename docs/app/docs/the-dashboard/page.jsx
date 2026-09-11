@@ -281,10 +281,11 @@ export default function TheDashboard() {
 
       <h3 id="page-waf">WAF</h3>
       <p>
-        The WAF page provides full rule management. You can view all built-in rules with their
-        current strictness levels, toggle individual rules on or off, create new custom rules with
-        regex patterns, and test arbitrary input against the active rule set to see which rules
-        would match before deploying changes.
+        The WAF page shows the running WAF's mode and each built-in category's strictness level,
+        lets you create and delete custom rules (including log-only rules for staging), and tests
+        arbitrary input against the patterns to see what would match. The mode and strictness levels
+        are changed through <code>PUT /sentinel/api/waf/rules</code>; changes apply to live requests,
+        are audited, and last until the next restart.
       </p>
 
       {/* ------------------------------------------------------------------ */}
@@ -295,8 +296,9 @@ export default function TheDashboard() {
       <p>
         The Rate Limits page shows the current rate limiting configuration and live counter states.
         Counters auto-refresh to show real-time usage for each IP, user, route, and global limit.
-        You can reset individual counters from the UI — useful for unblocking a legitimate user
-        who hit a limit.
+        You can add, change, or remove per-route limits — the change reaches the running rate
+        limiter immediately and lasts until the next restart — and reset individual counters, which
+        is useful for unblocking a legitimate user who hit a limit. Every change is audited.
       </p>
 
       {/* ------------------------------------------------------------------ */}
