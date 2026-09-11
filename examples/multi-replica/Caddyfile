@@ -1,0 +1,7 @@
+:8080 {
+	# Round-robin across the replicas. Caddy appends the client address to
+	# X-Forwarded-For; the apps trust it only from Caddy (TRUSTED_PROXIES).
+	reverse_proxy app1:8080 app2:8080 {
+		lb_policy round_robin
+	}
+}

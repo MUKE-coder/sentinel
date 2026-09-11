@@ -1,0 +1,6 @@
+.git
+**/node_modules
+docs
+ui/dashboard
+security/scan/reports
+*.db

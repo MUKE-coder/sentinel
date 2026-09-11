@@ -3,6 +3,7 @@ export const sidebarNav = [
     title: 'Getting Started',
     items: [
       { title: 'Introduction', href: '/docs/getting-started' },
+      { title: "What's New in v2.5", href: '/docs/whats-new-v2-5' },
       { title: "What's New in v2.4", href: '/docs/whats-new-v2-4' },
       { title: "What's New in v2.3", href: '/docs/whats-new-v2-3' },
       { title: "What's New in v2.0", href: '/docs/whats-new-v2' },
@@ -52,6 +53,7 @@ export const sidebarNav = [
 
 export const searchIndex = [
   { title: 'Introduction', href: '/docs/getting-started', content: 'Getting started installation quick start mount gin router zero config sentinel SDK security middleware', section: 'Getting Started' },
+  { title: "What's New in v2.5", href: '/docs/whats-new-v2-5', content: "v2.5.0 release notes replicas horizontal scaling load balancer shared counters Redis redisstore CounterStore countertest rate limit AuthShield lockout across instances multi-replica Caddy Postgres", section: 'Getting Started' },
   { title: "What's New in v2.4", href: '/docs/whats-new-v2-4', content: "v2.4.0 release notes upgrade double encoding WAF bypass accuracy corpus false positives detection rate SecretKey random default password localhost WebSocket origin AI redaction audit hash chain verify AuditKey AbuseIPDB live reputation blocklist feeds Spamhaus IP block expiry", section: 'Getting Started' },
   { title: "What's New in v2.3", href: '/docs/whats-new-v2-3', content: "v2.3.0 v2.2.2 v2.2.0 v2.1 release notes upgrade dashboard config live WAF rules sensitivity rule action log rate limit strategy sliding window token bucket UserExtractor user activity audit trail AuditRetentionDays compliance provenance X-Forwarded-For SQL injection sort_by SSRF ValidateConfig", section: 'Getting Started' },
   { title: "What's New in v2.0", href: '/docs/whats-new-v2', content: "v2.0.0 release breaking changes MountE error return TrustedProxies XFF X-Forwarded-For body cap CVSS PagerDuty SSRF HTTPClient CSP CAPTCHA hCaptcha Turnstile reCAPTCHA Postgres adapter AI budget cap drop counter migration guide", section: 'Getting Started' },

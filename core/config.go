@@ -29,6 +29,12 @@ type Config struct {
 	UserExtractor func(c *gin.Context) *UserContext
 	Performance PerformanceConfig
 	CAPTCHA     CAPTCHAConfig
+
+	// Counters holds the counters behind rate limiting and AuthShield. Nil
+	// keeps them in process memory, so each replica counts on its own; set a
+	// shared store such as redisstore.New(client) and limits and lockouts
+	// hold across every replica.
+	Counters CounterStore
 }
 
 // CAPTCHAConfig configures the CAPTCHA tier used by AuthShield. Pick exactly

@@ -16,6 +16,8 @@ type (
 	HeaderConfig       = core.HeaderConfig
 	AnomalyConfig      = core.AnomalyConfig
 	IPReputationConfig = core.IPReputationConfig
+	CounterStore       = core.CounterStore
+	CounterUsage       = core.CounterUsage
 	GeoConfig          = core.GeoConfig
 	AlertConfig        = core.AlertConfig
 	SlackConfig        = core.SlackConfig

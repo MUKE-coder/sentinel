@@ -2,11 +2,12 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/MUKE-coder/sentinel/v2/captcha"
@@ -19,40 +20,55 @@ import (
 
 // AuthShield tracks failed login attempts per IP and per username,
 // and enforces lockouts, credential stuffing detection, and the CAPTCHA
-// challenge tier between "fine" and "locked out".
+// challenge tier between "fine" and "locked out". Its counters live in a
+// sentinel.CounterStore — in memory by default; SetCounters shares them
+// across replicas.
 type AuthShield struct {
-	config         sentinel.AuthShieldConfig
-	store          storage.Store
-	pipe           *pipeline.Pipeline
-	mu             sync.Mutex
-	ipFails        map[string]*failTracker
-	userFails      map[string]*failTracker
-	ipUsers        map[string]*stuffingTracker // credential stuffing detection
+	config          sentinel.AuthShieldConfig
+	store           storage.Store
+	pipe            *pipeline.Pipeline
+	counters        sentinel.CounterStore
+	ownCounters     *MemoryCounterStore // closed when SetCounters replaces it
+	now             func() time.Time
+	errLog          rateLimitedLog
 	captchaProvider captcha.Provider
 }
 
-type failTracker struct {
-	attempts []time.Time
-	locked   bool
-	lockUntil time.Time
-}
-
-type stuffingTracker struct {
-	usernames map[string]bool
-	window    []time.Time
-}
+// Counter keys. A failure is recorded as a unique attempt ID in a set, so
+// each attempt counts once however many replicas share the store.
+const (
+	authFailIPPrefix   = "as:fail:ip:"
+	authFailUserPrefix = "as:fail:user:"
+	authLockIPPrefix   = "as:lock:ip:"
+	authLockUserPrefix = "as:lock:user:"
+	authStuffingPrefix = "as:stuff:"
+)
 
 // NewAuthShield creates a new authentication shield middleware.
 func NewAuthShield(config sentinel.AuthShieldConfig, store storage.Store, pipe *pipeline.Pipeline) *AuthShield {
-	as := &AuthShield{
-		config:    config,
-		store:     store,
-		pipe:      pipe,
-		ipFails:   make(map[string]*failTracker),
-		userFails: make(map[string]*failTracker),
-		ipUsers:   make(map[string]*stuffingTracker),
+	mem := NewMemoryCounterStore()
+	return &AuthShield{
+		config:      config,
+		store:       store,
+		pipe:        pipe,
+		counters:    mem,
+		ownCounters: mem,
+		now:         time.Now,
 	}
-	return as
+}
+
+// SetCounters moves AuthShield's failure counts and lockouts to cs. Pass a
+// shared store (redisstore) so a lockout on one replica holds on all of
+// them. Call it before serving requests.
+func (as *AuthShield) SetCounters(cs sentinel.CounterStore) {
+	if cs == nil {
+		return
+	}
+	if as.ownCounters != nil {
+		as.ownCounters.Close()
+		as.ownCounters = nil
+	}
+	as.counters = cs
 }
 
 // SetCAPTCHAProvider installs a CAPTCHA provider used for the
@@ -69,14 +85,11 @@ func (as *AuthShield) captchaRequired(ip string) bool {
 	if as.captchaProvider == nil || as.config.CAPTCHAThreshold <= 0 {
 		return false
 	}
-	as.mu.Lock()
-	defer as.mu.Unlock()
-	t := as.ipFails[ip]
-	if t == nil || t.locked {
+	now := as.now()
+	if !as.lockedUntil(authLockIPPrefix+ip, now).IsZero() {
 		return false
 	}
-	t.attempts = pruneOld(t.attempts, time.Now(), as.config.LockoutDuration)
-	return len(t.attempts) >= as.config.CAPTCHAThreshold
+	return as.failures(authFailIPPrefix+ip, now) >= as.config.CAPTCHAThreshold
 }
 
 // Middleware returns a Gin middleware that wraps the configured login route.
@@ -193,105 +206,76 @@ func clipField(s string, n int) string {
 	return strings.ToValidUTF8(s[:n], "")
 }
 
+// lockedUntil returns the lockout deadline stored at key. A store error
+// counts as not locked — AuthShield fails open rather than locking every
+// user out — and is logged.
+func (as *AuthShield) lockedUntil(key string, now time.Time) time.Time {
+	until, err := as.counters.Until(context.Background(), key, now)
+	if err != nil {
+		as.errLog.log("AuthShield counter store: %v (lockouts not enforced until it recovers)", err)
+		return time.Time{}
+	}
+	return until
+}
+
+// failures counts the failed attempts at key within the lockout window.
+func (as *AuthShield) failures(key string, now time.Time) int {
+	n, err := as.counters.Count(context.Background(), key, as.config.LockoutDuration, now)
+	if err != nil {
+		as.errLog.log("AuthShield counter store: %v", err)
+		return 0
+	}
+	return n
+}
+
 // isIPLocked checks if the IP is currently locked out.
 func (as *AuthShield) isIPLocked(ip string) bool {
-	as.mu.Lock()
-	defer as.mu.Unlock()
-
-	tracker := as.ipFails[ip]
-	if tracker == nil {
-		return false
-	}
-
-	if tracker.locked {
-		if time.Now().After(tracker.lockUntil) {
-			// Lockout expired
-			tracker.locked = false
-			tracker.attempts = nil
-			return false
-		}
-		return true
-	}
-	return false
+	return !as.lockedUntil(authLockIPPrefix+ip, as.now()).IsZero()
 }
 
 // IsUserLocked checks if a specific username is locked.
 func (as *AuthShield) IsUserLocked(username string) bool {
-	as.mu.Lock()
-	defer as.mu.Unlock()
-
-	tracker := as.userFails[username]
-	if tracker == nil {
-		return false
-	}
-	if tracker.locked {
-		if time.Now().After(tracker.lockUntil) {
-			tracker.locked = false
-			tracker.attempts = nil
-			return false
-		}
-		return true
-	}
-	return false
+	return !as.lockedUntil(authLockUserPrefix+username, as.now()).IsZero()
 }
 
 // UnblockUser removes the lockout on a specific username.
 func (as *AuthShield) UnblockUser(username string) {
-	as.mu.Lock()
-	defer as.mu.Unlock()
-	delete(as.userFails, username)
+	if _, err := as.counters.Delete(context.Background(), authFailUserPrefix+username, authLockUserPrefix+username); err != nil {
+		as.errLog.log("AuthShield counter store: %v", err)
+	}
 }
 
 // recordFailure records a failed login attempt and enforces lockouts.
 func (as *AuthShield) recordFailure(ip, username string) {
-	as.mu.Lock()
-	defer as.mu.Unlock()
-	now := time.Now()
+	ctx := context.Background()
+	now := as.now()
 	window := as.config.LockoutDuration
+	attempt := uuid.NewString()
 
-	// Track IP failures
-	ipTracker := as.ipFails[ip]
-	if ipTracker == nil {
-		ipTracker = &failTracker{}
-		as.ipFails[ip] = ipTracker
+	// fail counts the attempt against key and sets the lockout at lockKey
+	// once MaxFailedAttempts land within the window.
+	fail := func(key, lockKey string) {
+		n, err := as.counters.Record(ctx, key, attempt, window, now)
+		if err != nil {
+			as.errLog.log("AuthShield counter store: %v (failed logins not counted until it recovers)", err)
+			return
+		}
+		if n >= as.config.MaxFailedAttempts {
+			if err := as.counters.SetUntil(ctx, lockKey, now.Add(window)); err != nil {
+				as.errLog.log("AuthShield counter store: %v", err)
+			}
+		}
 	}
-	ipTracker.attempts = pruneOld(ipTracker.attempts, now, window)
-	ipTracker.attempts = append(ipTracker.attempts, now)
-
-	if len(ipTracker.attempts) >= as.config.MaxFailedAttempts {
-		ipTracker.locked = true
-		ipTracker.lockUntil = now.Add(window)
-	}
-
-	// Track username failures
+	fail(authFailIPPrefix+ip, authLockIPPrefix+ip)
 	if username != "" {
-		userTracker := as.userFails[username]
-		if userTracker == nil {
-			userTracker = &failTracker{}
-			as.userFails[username] = userTracker
-		}
-		userTracker.attempts = pruneOld(userTracker.attempts, now, window)
-		userTracker.attempts = append(userTracker.attempts, now)
-
-		if len(userTracker.attempts) >= as.config.MaxFailedAttempts {
-			userTracker.locked = true
-			userTracker.lockUntil = now.Add(window)
-		}
+		fail(authFailUserPrefix+username, authLockUserPrefix+username)
 	}
 
-	// Credential stuffing detection
+	// Credential stuffing: many different usernames from one IP within the
+	// window.
 	if as.config.CredentialStuffingDetection && username != "" {
-		st := as.ipUsers[ip]
-		if st == nil {
-			st = &stuffingTracker{usernames: make(map[string]bool)}
-			as.ipUsers[ip] = st
-		}
-		st.window = pruneOld(st.window, now, window)
-		st.window = append(st.window, now)
-		st.usernames[username] = true
-
-		if len(st.usernames) > 10 {
-			// Credential stuffing detected — emit threat outside lock
+		n, err := as.counters.Record(ctx, authStuffingPrefix+ip, username, window, now)
+		if err == nil && n > 10 {
 			go as.emitThreat(ip, username, "CredentialStuffing",
 				"Same IP tried >10 different usernames")
 		}
@@ -300,13 +284,13 @@ func (as *AuthShield) recordFailure(ip, username string) {
 
 // recordSuccess resets failure counters on successful login.
 func (as *AuthShield) recordSuccess(ip, username string) {
-	as.mu.Lock()
-	defer as.mu.Unlock()
-	delete(as.ipFails, ip)
+	keys := []string{authFailIPPrefix + ip, authLockIPPrefix + ip, authStuffingPrefix + ip}
 	if username != "" {
-		delete(as.userFails, username)
+		keys = append(keys, authFailUserPrefix+username, authLockUserPrefix+username)
 	}
-	delete(as.ipUsers, ip)
+	if _, err := as.counters.Delete(context.Background(), keys...); err != nil {
+		as.errLog.log("AuthShield counter store: %v", err)
+	}
 }
 
 // emitThreat sends a ThreatEvent to the pipeline.
@@ -347,31 +331,42 @@ type AuthShieldStatus struct {
 
 // Snapshot returns the current per-IP AuthShield state — useful for the
 // dashboard panel that visualizes who's in the lockout / CAPTCHA tier
-// without having to chase ThreatEvents.
+// without having to chase ThreatEvents. With a shared store it covers every
+// replica.
 func (as *AuthShield) Snapshot() []AuthShieldStatus {
-	as.mu.Lock()
-	defer as.mu.Unlock()
-	now := time.Now()
-	captchaThreshold := as.config.CAPTCHAThreshold
-	out := make([]AuthShieldStatus, 0, len(as.ipFails))
-	for ip, t := range as.ipFails {
-		t.attempts = pruneOld(t.attempts, now, as.config.LockoutDuration)
-		if t.locked && now.After(t.lockUntil) {
-			t.locked = false
+	ctx := context.Background()
+	now := as.now()
+	ips := make(map[string]bool)
+	for _, prefix := range []string{authFailIPPrefix, authLockIPPrefix} {
+		keys, err := as.counters.Keys(ctx, prefix)
+		if err != nil {
+			as.errLog.log("AuthShield counter store: %v", err)
+			continue
+		}
+		for _, k := range keys {
+			ips[strings.TrimPrefix(k, prefix)] = true
+		}
+	}
+
+	out := make([]AuthShieldStatus, 0, len(ips))
+	for ip := range ips {
+		attempts := as.failures(authFailIPPrefix+ip, now)
+		until := as.lockedUntil(authLockIPPrefix+ip, now)
+		if attempts == 0 && until.IsZero() {
+			continue
 		}
 		row := AuthShieldStatus{
 			IP:             ip,
-			FailedAttempts: len(t.attempts),
-			Locked:         t.locked,
+			FailedAttempts: attempts,
+			Locked:         !until.IsZero(),
+			LockUntil:      until,
 		}
-		if t.locked {
-			row.LockUntil = t.lockUntil
-		}
-		if as.captchaProvider != nil && captchaThreshold > 0 && !t.locked && len(t.attempts) >= captchaThreshold {
+		if as.captchaProvider != nil && as.config.CAPTCHAThreshold > 0 && !row.Locked && attempts >= as.config.CAPTCHAThreshold {
 			row.CAPTCHARequired = true
 		}
 		out = append(out, row)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].IP < out[j].IP })
 	return out
 }
 
@@ -386,29 +381,8 @@ func (as *AuthShield) CAPTCHAProviderName() string {
 
 // GetIPStatus returns the current failure count and lock status for an IP.
 func (as *AuthShield) GetIPStatus(ip string) (attempts int, locked bool) {
-	as.mu.Lock()
-	defer as.mu.Unlock()
-	tracker := as.ipFails[ip]
-	if tracker == nil {
-		return 0, false
-	}
-	tracker.attempts = pruneOld(tracker.attempts, time.Now(), as.config.LockoutDuration)
-	if tracker.locked && time.Now().After(tracker.lockUntil) {
-		tracker.locked = false
-	}
-	return len(tracker.attempts), tracker.locked
-}
-
-// pruneOld removes timestamps older than the window.
-func pruneOld(times []time.Time, now time.Time, window time.Duration) []time.Time {
-	cutoff := now.Add(-window)
-	var result []time.Time
-	for _, t := range times {
-		if t.After(cutoff) {
-			result = append(result, t)
-		}
-	}
-	return result
+	now := as.now()
+	return as.failures(authFailIPPrefix+ip, now), !as.lockedUntil(authLockIPPrefix+ip, now).IsZero()
 }
 
 // authResponseWriter wraps gin.ResponseWriter to capture the status code.
