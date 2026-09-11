@@ -1,0 +1,69 @@
+# Two replicas of one app behind Caddy, sharing Sentinel's counters (Redis)
+# and data (Postgres). See README.md in this directory.
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: examples/multi-replica/Dockerfile
+  restart: on-failure
+  depends_on:
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+  environment: &app-env
+    REDIS_ADDR: redis:6379
+    DATABASE_URL: postgres://sentinel:sentinel@postgres:5432/sentinel?sslmode=disable
+    TRUSTED_PROXIES: 172.28.0.10
+    SENTINEL_PASSWORD: ${SENTINEL_PASSWORD:-change-me-please}
+    SENTINEL_SECRET_KEY: ${SENTINEL_SECRET_KEY:-replace-with-32-random-bytes-in-production}
+  networks: [sentinel]
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on: [app1, app2]
+    networks:
+      sentinel:
+        ipv4_address: 172.28.0.10
+
+  app1:
+    <<: *app
+    environment:
+      <<: *app-env
+      REPLICA: app1
+
+  app2:
+    <<: *app
+    environment:
+      <<: *app-env
+      REPLICA: app2
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 15
+    networks: [sentinel]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "sentinel"]
+      interval: 2s
+      retries: 15
+    networks: [sentinel]
+
+networks:
+  sentinel:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

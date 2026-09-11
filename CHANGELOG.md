@@ -2,6 +2,36 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.5.0] - 2026-09-11
+
+### Added
+
+- **Rate limits and AuthShield lockouts that hold across replicas.**
+  Counters used to live in each process, so behind N instances a client
+  got N times every rate limit and N times AuthShield's failed-login budget.
+  `Config.Counters` now takes a `sentinel.CounterStore`, and
+  `redisstore.New(client)` shares the counters through Redis. The
+  `redisstore` package is `github.com/MUKE-coder/sentinel/v2/redisstore`,
+  built on go-redis v9, and works with a single server, Redis Sentinel, or
+  a cluster. Each rate-limit decision runs as one Lua script, so two
+  replicas can't both take the last slot. When Redis is unreachable,
+  requests are allowed, and the error is logged at most once a minute.
+- The `sentinel.CounterStore` interface, and `middleware.MemoryCounterStore`
+  as the default. Package `countertest` is a conformance suite for other
+  implementations. The in-memory and Redis stores both pass it, so the rate
+  limiter and AuthShield make the same decisions on either.
+- `examples/multi-replica`: two replicas behind Caddy that share Redis
+  counters and Postgres storage, with curl checks showing the limits hold
+  across them.
+
+### Changed
+
+- AuthShield's credential-stuffing detection counts distinct usernames
+  within `LockoutDuration`. Before, the set of usernames per IP grew until
+  the next successful login.
+- The dashboard's AuthShield panel lists only IPs with failures or a
+  lockout in the current window.
+
 ## [2.4.0] - 2026-09-11
 
 ### Added

@@ -3,7 +3,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
-[![Release](https://img.shields.io/badge/Release-v2.4.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Release](https://img.shields.io/badge/Release-v2.5.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
 [![Tests](https://img.shields.io/badge/Tests-17%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
 [![Dashboard Pages](https://img.shields.io/badge/Dashboard-13%20pages-purple)](https://github.com/MUKE-coder/sentinel)
@@ -19,6 +19,13 @@ sentinel.Mount(r, nil, sentinel.Config{})
 r.Run(":8080")
 // Dashboard → http://localhost:8080/sentinel/ui
 ```
+
+## What's new in v2.5.0
+
+**Rate limits and lockouts that hold across replicas.**
+
+- **Shared counters.** Before, counters lived in each process, so behind N instances a client got N times every rate limit and N times AuthShield's failed-login budget. Set `Config.Counters: redisstore.New(client)` and every replica counts against the same numbers in Redis. It works with a single server, Redis Sentinel, or a cluster. Each decision is atomic, and requests are allowed if Redis is down.
+- **`sentinel.CounterStore`** is an interface, with a `countertest` conformance suite for your own store. [`examples/multi-replica`](examples/multi-replica) runs two replicas behind Caddy with shared Redis and Postgres.
 
 ## What's new in v2.4.0
 

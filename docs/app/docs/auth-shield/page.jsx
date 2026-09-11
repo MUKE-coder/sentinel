@@ -423,6 +423,27 @@ curl -s -w "\\nHTTP %{http_code}\\n" \\
       {/*  COMBINING WITH RATE LIMITING                                      */}
       {/* ------------------------------------------------------------------ */}
 
+      <h2 id="replicas">Across Replicas</h2>
+      <p>
+        By default, AuthShield keeps its failure counts and lockouts in memory, so each instance of
+        your app counts on its own. Behind three replicas, an attacker gets three times{' '}
+        <code>MaxFailedAttempts</code> before any lockout. Set <code>Config.Counters</code> to a
+        shared store, and a lockout on one replica holds on all of them:
+      </p>
+      <CodeBlock
+        language="go"
+        code={`client := redis.NewClient(&redis.Options{Addr: "redis:6379"})
+
+sentinel.Mount(r, nil, sentinel.Config{
+    Counters:   redisstore.New(client), // github.com/MUKE-coder/sentinel/v2/redisstore
+    AuthShield: sentinel.AuthShieldConfig{Enabled: true, LoginRoute: "/api/login"},
+})`}
+      />
+      <p>
+        The dashboard&apos;s AuthShield panel then shows lockouts from every replica. If Redis is
+        unreachable, AuthShield fails open: logins are allowed and the error is logged.
+      </p>
+
       <h2 id="combining">Combining with Rate Limiting</h2>
       <p>
         Auth Shield and rate limiting are complementary. A recommended pattern is to use both:

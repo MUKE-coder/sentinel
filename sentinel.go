@@ -240,10 +240,18 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 		router.Use(middleware.UserActivityMiddleware(config.UserExtractor, pipe, config.Dashboard.Prefix))
 	}
 
+	// Counters behind rate limiting and AuthShield: shared by every replica
+	// when Config.Counters is set (redisstore), per process otherwise.
+	counters := config.Counters
+	if counters == nil && (config.AuthShield.Enabled || config.RateLimit.Enabled) {
+		counters = middleware.NewMemoryCounterStore()
+	}
+
 	// 5e. Initialize auth shield (with optional CAPTCHA tier)
 	var authShield *middleware.AuthShield
 	if config.AuthShield.Enabled {
 		authShield = middleware.NewAuthShield(config.AuthShield, store, pipe)
+		authShield.SetCounters(counters)
 		if cp := buildCAPTCHAProvider(config); cp != nil {
 			authShield.SetCAPTCHAProvider(cp)
 		}
@@ -268,7 +276,7 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	// 7. Register rate limiter
 	var rateLimiter *middleware.RateLimiter
 	if config.RateLimit.Enabled {
-		rateLimiter = middleware.NewRateLimiter()
+		rateLimiter = middleware.NewRateLimiterWithStore(counters)
 		router.Use(middleware.RateLimitMiddleware(config.RateLimit, rateLimiter, pipe))
 	}
 

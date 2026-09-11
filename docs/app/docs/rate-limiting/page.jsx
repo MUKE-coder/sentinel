@@ -617,13 +617,67 @@ curl -v http://localhost:8080/api/hello 2>&1
       />
 
       {/* ------------------------------------------------------------------ */}
+      {/*  ACROSS REPLICAS                                                    */}
+      {/* ------------------------------------------------------------------ */}
+
+      <h2 id="replicas">Across Replicas</h2>
+      <p>
+        By default, counters live in process memory. If you run several instances behind a load
+        balancer, each one counts on its own, so a client gets <code>N × limit</code> requests
+        across <code>N</code> instances. To share the counters, set <code>Config.Counters</code> to
+        a shared store. Every replica then counts against the same numbers:
+      </p>
+      <CodeBlock
+        language="go"
+        code={`import (
+    "github.com/MUKE-coder/sentinel/v2/redisstore"
+    "github.com/redis/go-redis/v9"
+)
+
+client := redis.NewClient(&redis.Options{
+    Addr:        "redis:6379",
+    ReadTimeout: 250 * time.Millisecond, // bound how long a request waits on Redis
+})
+
+sentinel.Mount(r, nil, sentinel.Config{
+    Counters: redisstore.New(client),
+    RateLimit: sentinel.RateLimitConfig{
+        Enabled: true,
+        ByIP:    &sentinel.Limit{Requests: 100, Window: time.Minute},
+    },
+})`}
+      />
+      <ul>
+        <li>
+          Each decision runs as one Lua script, so two replicas can&apos;t both take the last slot.
+          All three strategies behave the same as they do in memory.
+        </li>
+        <li>
+          If Redis is unreachable, requests are allowed rather than failed. The error is logged at
+          most once a minute.
+        </li>
+        <li>
+          If several applications share one Redis, give each one its own{' '}
+          <code>redisstore.WithPrefix</code>.
+        </li>
+        <li>
+          Per-IP limits key on the client address. Behind a load balancer, set{' '}
+          <code>WAF.TrustedProxies</code>, or every request counts against the balancer&apos;s
+          address.
+        </li>
+      </ul>
+      <p>
+        <code>examples/multi-replica</code> in the repository runs two replicas behind Caddy, with a
+        shared Redis and Postgres.
+      </p>
+
+      {/* ------------------------------------------------------------------ */}
       {/*  LIMITATIONS                                                        */}
       {/* ------------------------------------------------------------------ */}
 
       <h2 id="limitations">Limitations</h2>
       <p>
-        The current rate limiter implementation has a few limitations to be aware of when planning
-        your deployment.
+        The rate limiter has a few limitations to keep in mind when planning your deployment.
       </p>
 
       <table>
@@ -636,27 +690,14 @@ curl -v http://localhost:8080/api/hello 2>&1
         </thead>
         <tbody>
           <tr>
-            <td><strong>In-memory only</strong></td>
+            <td><strong>In-memory by default</strong></td>
             <td>
-              All rate limit counters are stored in process memory. Counters are lost when the
-              application restarts.
+              Without <code>Config.Counters</code>, counters live in process memory. They reset when
+              the application restarts, and each instance behind a load balancer counts on its own.
             </td>
             <td>
-              Accept that counters reset on restart. For most use cases, this is acceptable because
-              windows are short (minutes/hours).
-            </td>
-          </tr>
-          <tr>
-            <td><strong>No cross-instance sharing</strong></td>
-            <td>
-              If you run multiple instances of your application behind a load balancer, each instance
-              maintains its own independent counters. A client could effectively get{' '}
-              <code>N x limit</code> requests across <code>N</code> instances.
-            </td>
-            <td>
-              Use sticky sessions at the load balancer level, or divide your limits by the number of
-              instances (e.g., set 50 req/min per instance if you have 2 instances and want a 100
-              req/min effective limit).
+              Set <code>Config.Counters: redisstore.New(client)</code>. See{' '}
+              <a href="#replicas">Across Replicas</a>.
             </td>
           </tr>
           <tr>

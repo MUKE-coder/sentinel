@@ -1718,6 +1718,46 @@ UserExtractor: func(c *gin.Context) *sentinel.UserContext {
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
+      {/*  COUNTERS                                                           */}
+      {/* ------------------------------------------------------------------ */}
+
+      <h2 id="counters">Counters (Multiple Replicas)</h2>
+      <p>
+        <code>Config.Counters</code> holds the counters behind rate limiting and AuthShield. When it
+        is nil, they live in process memory, and each replica counts on its own. Set a shared store
+        so limits and lockouts hold across every instance.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Counters</code></td>
+            <td><code>CounterStore</code></td>
+            <td><code>nil</code> (in memory)</td>
+            <td>
+              Where rate-limit counters and AuthShield failures and lockouts are kept.{' '}
+              <code>redisstore.New(client)</code> shares them through Redis.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <CodeBlock
+        language="go"
+        code={`import "github.com/MUKE-coder/sentinel/v2/redisstore"
+
+Counters: redisstore.New(redis.NewClient(&redis.Options{Addr: "redis:6379"})),`}
+      />
+
+      {/* ------------------------------------------------------------------ */}
       {/*  PERFORMANCE CONFIG                                                 */}
       {/* ------------------------------------------------------------------ */}
 

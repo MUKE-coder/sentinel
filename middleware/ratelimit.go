@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"context"
+	"log"
 	"math"
 	"net/http"
 	"sort"
@@ -16,47 +18,50 @@ import (
 	"github.com/google/uuid"
 )
 
-// rateLimitEntry is one counter's state. Which fields are live depends on
-// the limiter's strategy.
-type rateLimitEntry struct {
-	limit      int
-	window     time.Duration
-	count      int       // fixed, sliding: requests counted in the current window
-	prevCount  int       // sliding: requests counted in the previous window
-	windowEnd  time.Time // fixed, sliding: end of the current window
-	tokens     float64   // token bucket: tokens available as of lastRefill
-	lastRefill time.Time // token bucket
-	expires    time.Time // after this the entry affects no decision and can be dropped
-}
-
-// RateLimiter holds rate limit state for one process. Counters live in
-// memory and are not shared between replicas: behind N instances, each one
-// allows the configured limit on its own.
+// RateLimiter enforces rate limits against a sentinel.CounterStore. With the
+// default in-memory store each process counts on its own: behind N
+// instances, each one allows the configured limit. A shared store
+// (redisstore) makes the limits hold across replicas.
 type RateLimiter struct {
+	store    sentinel.CounterStore
+	ownStore *MemoryCounterStore // closed by Stop when the limiter created it
+
 	mu       sync.RWMutex
-	counters map[string]*rateLimitEntry
 	strategy sentinel.RateLimitStrategy
-	routes   atomic.Pointer[routeTable]
-	now      func() time.Time
-	stopCh   chan struct{}
+
+	routes atomic.Pointer[routeTable]
+	now    func() time.Time
+	errLog rateLimitedLog
 }
 
-// NewRateLimiter creates a sliding-window rate limiter with automatic cleanup.
+// NewRateLimiter creates a sliding-window rate limiter with an in-memory
+// counter store.
 func NewRateLimiter() *RateLimiter {
-	rl := &RateLimiter{
-		counters: make(map[string]*rateLimitEntry),
-		strategy: sentinel.SlidingWindow,
-		now:      time.Now,
-		stopCh:   make(chan struct{}),
-	}
-	rl.SetRouteLimits(nil)
-	go rl.cleanup()
+	mem := NewMemoryCounterStore()
+	rl := NewRateLimiterWithStore(mem)
+	rl.ownStore = mem
 	return rl
 }
 
-// Stop stops the cleanup goroutine.
+// NewRateLimiterWithStore creates a sliding-window rate limiter that keeps its
+// counters in store. Give every replica the same shared store and a client
+// gets each limit once, not once per replica.
+func NewRateLimiterWithStore(store sentinel.CounterStore) *RateLimiter {
+	rl := &RateLimiter{
+		store:    store,
+		strategy: sentinel.SlidingWindow,
+		now:      time.Now,
+	}
+	rl.SetRouteLimits(nil)
+	return rl
+}
+
+// Stop stops the in-memory store's cleanup goroutine, if this limiter
+// created the store.
 func (rl *RateLimiter) Stop() {
-	close(rl.stopCh)
+	if rl.ownStore != nil {
+		rl.ownStore.Close()
+	}
 }
 
 // SetStrategy selects the algorithm. sentinel.SlidingWindow — the default,
@@ -64,8 +69,9 @@ func (rl *RateLimiter) Stop() {
 // ending now. sentinel.FixedWindow counts per consecutive window and can let
 // up to twice the limit through across a window boundary.
 // sentinel.TokenBucket allows a burst of up to the limit, then a steady
-// limit-per-window rate. Changing strategy resets every counter, since the
-// state means different things under each.
+// limit-per-window rate. Counters are kept per strategy, since the state
+// means different things under each, so changing strategy starts every
+// client from zero.
 //
 // Before v2.3.0 RateLimitConfig.Strategy was never read and every limit was
 // a fixed window, whatever the config said.
@@ -75,9 +81,6 @@ func (rl *RateLimiter) SetStrategy(strategy sentinel.RateLimitStrategy) {
 	}
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	if strategy != rl.strategy {
-		rl.counters = make(map[string]*rateLimitEntry)
-	}
 	rl.strategy = strategy
 }
 
@@ -88,147 +91,35 @@ func (rl *RateLimiter) Strategy() sentinel.RateLimitStrategy {
 	return rl.strategy
 }
 
+// counterPrefix namespaces rate-limit counters in the store, per strategy.
+func counterPrefix(strategy sentinel.RateLimitStrategy) string {
+	return "rl:" + string(strategy) + ":"
+}
+
 func (rl *RateLimiter) check(key string, limit int, window time.Duration) bool {
 	if window <= 0 {
 		// A non-positive window never accumulates anything; ValidateConfig
 		// reports it.
 		return true
 	}
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	e := rl.counters[key]
-	if e == nil {
-		e = &rateLimitEntry{}
-		rl.counters[key] = e
+	strategy := rl.Strategy()
+	ok, err := rl.store.Take(context.Background(), counterPrefix(strategy)+key, limit, window, strategy, rl.now())
+	if err != nil {
+		// Fail open: a counter store outage must not take the application
+		// down with it.
+		rl.errLog.log("rate limit counter store: %v (requests allowed until it recovers)", err)
+		return true
 	}
-	e.limit, e.window = limit, window
-	now := rl.now()
-	switch rl.strategy {
-	case sentinel.FixedWindow:
-		return e.takeFixed(now)
-	case sentinel.TokenBucket:
-		return e.takeToken(now)
-	default:
-		return e.takeSliding(now)
-	}
-}
-
-// takeFixed counts the request against the current fixed window, which
-// starts at the first request after the previous one ended.
-func (e *rateLimitEntry) takeFixed(now time.Time) bool {
-	if !now.Before(e.windowEnd) {
-		e.count = 0
-		e.windowEnd = now.Add(e.window)
-	}
-	e.count++
-	e.expires = e.windowEnd
-	return e.count <= e.limit
-}
-
-// takeSliding approximates a true sliding window from two fixed windows: the
-// previous window's count, weighted by how much of it still overlaps the
-// window ending now, plus the current window's count. Rejected requests are
-// not counted.
-func (e *rateLimitEntry) takeSliding(now time.Time) bool {
-	e.roll(now)
-	if e.slidingUsage(now) >= float64(e.limit) {
-		return false
-	}
-	e.count++
-	e.expires = e.windowEnd.Add(e.window)
-	return true
-}
-
-// roll advances the sliding window to the one containing now.
-func (e *rateLimitEntry) roll(now time.Time) {
-	if e.windowEnd.IsZero() {
-		e.windowEnd = now.Add(e.window)
-		return
-	}
-	if now.Before(e.windowEnd) {
-		return
-	}
-	passed := now.Sub(e.windowEnd)/e.window + 1
-	if passed == 1 {
-		e.prevCount = e.count
-	} else {
-		e.prevCount = 0
-	}
-	e.count = 0
-	e.windowEnd = e.windowEnd.Add(passed * e.window)
-}
-
-func (e *rateLimitEntry) slidingUsage(now time.Time) float64 {
-	overlap := float64(e.windowEnd.Sub(now)) / float64(e.window)
-	return float64(e.prevCount)*math.Max(0, math.Min(1, overlap)) + float64(e.count)
-}
-
-// takeToken spends a token from a bucket that holds up to limit tokens and
-// refills at limit tokens per window.
-func (e *rateLimitEntry) takeToken(now time.Time) bool {
-	e.refill(now)
-	allowed := e.tokens >= 1
-	if allowed {
-		e.tokens--
-	}
-	e.expires = now.Add(e.untilFull())
-	return allowed
-}
-
-func (e *rateLimitEntry) refill(now time.Time) {
-	if e.lastRefill.IsZero() {
-		e.tokens = float64(e.limit)
-	} else {
-		perNano := float64(e.limit) / float64(e.window)
-		e.tokens = math.Min(float64(e.limit), e.tokens+float64(now.Sub(e.lastRefill))*perNano)
-	}
-	e.lastRefill = now
-}
-
-// untilFull is how long the bucket takes to refill completely.
-func (e *rateLimitEntry) untilFull() time.Duration {
-	if e.limit <= 0 {
-		return 0
-	}
-	return time.Duration((float64(e.limit) - e.tokens) / float64(e.limit) * float64(e.window))
-}
-
-// usage reports how much of its limit an entry has consumed as of now. It
-// works on a copy, so readers holding only the read lock never mutate state.
-func (rl *RateLimiter) usage(e *rateLimitEntry, now time.Time) float64 {
-	c := *e
-	if c.window <= 0 {
-		return 0
-	}
-	switch rl.strategy {
-	case sentinel.FixedWindow:
-		if !now.Before(c.windowEnd) {
-			return 0
-		}
-		return float64(c.count)
-	case sentinel.TokenBucket:
-		c.refill(now)
-		return float64(c.limit) - c.tokens
-	default:
-		c.roll(now)
-		return c.slidingUsage(now)
-	}
+	return ok
 }
 
 func (rl *RateLimiter) remaining(key string, limit int) int {
-	rl.mu.RLock()
-	defer rl.mu.RUnlock()
-
-	e, exists := rl.counters[key]
-	if !exists {
+	strategy := rl.Strategy()
+	u, ok, err := rl.store.Usage(context.Background(), counterPrefix(strategy)+key, strategy, rl.now())
+	if err != nil || !ok {
 		return limit
 	}
-	rem := limit - int(math.Ceil(rl.usage(e, rl.now())))
-	if rem < 0 {
-		return 0
-	}
-	return rem
+	return max(limit-int(math.Ceil(u.Used)), 0)
 }
 
 // RateLimitState represents the current state of a rate limit entry.
@@ -244,31 +135,28 @@ type RateLimitState struct {
 // much of the limit is used as of now; WindowEnd is when the current window
 // ends (fixed, sliding) or when the bucket is full again (token bucket).
 func (rl *RateLimiter) GetCurrentStates() []RateLimitState {
-	rl.mu.RLock()
-	defer rl.mu.RUnlock()
-
+	ctx := context.Background()
+	strategy := rl.Strategy()
+	prefix := counterPrefix(strategy)
+	keys, err := rl.store.Keys(ctx, prefix)
+	if err != nil {
+		rl.errLog.log("rate limit counter store: %v", err)
+		return nil
+	}
 	now := rl.now()
 	var states []RateLimitState
-	for key, e := range rl.counters {
-		if !now.Before(e.expires) {
+	for _, k := range keys {
+		u, ok, err := rl.store.Usage(ctx, k, strategy, now)
+		if err != nil || !ok {
 			continue
 		}
-		used := int(math.Ceil(rl.usage(e, now)))
-		windowEnd := e.windowEnd
-		switch rl.strategy {
-		case sentinel.TokenBucket:
-			windowEnd = e.expires
-		case sentinel.SlidingWindow:
-			c := *e
-			c.roll(now)
-			windowEnd = c.windowEnd
-		}
+		used := int(math.Ceil(u.Used))
 		states = append(states, RateLimitState{
-			Key:       key,
+			Key:       strings.TrimPrefix(k, prefix),
 			Count:     used,
-			Limit:     e.limit,
-			WindowEnd: windowEnd,
-			Remaining: max(e.limit-used, 0),
+			Limit:     u.Limit,
+			WindowEnd: u.WindowEnd,
+			Remaining: max(u.Limit-used, 0),
 		})
 	}
 	return states
@@ -276,32 +164,28 @@ func (rl *RateLimiter) GetCurrentStates() []RateLimitState {
 
 // ResetKey removes a specific rate limit counter.
 func (rl *RateLimiter) ResetKey(key string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	_, exists := rl.counters[key]
-	delete(rl.counters, key)
-	return exists
+	existed, err := rl.store.Delete(context.Background(), counterPrefix(rl.Strategy())+key)
+	if err != nil {
+		rl.errLog.log("rate limit counter store: %v", err)
+	}
+	return existed
 }
 
-func (rl *RateLimiter) cleanup() {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+// rateLimitedLog logs at most once a minute, so a counter store outage
+// doesn't write one line per request.
+type rateLimitedLog struct {
+	mu   sync.Mutex
+	last time.Time
+}
 
-	for {
-		select {
-		case <-rl.stopCh:
-			return
-		case <-ticker.C:
-			rl.mu.Lock()
-			now := rl.now()
-			for key, entry := range rl.counters {
-				if !now.Before(entry.expires) {
-					delete(rl.counters, key)
-				}
-			}
-			rl.mu.Unlock()
-		}
+func (l *rateLimitedLog) log(format string, args ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if time.Since(l.last) < time.Minute {
+		return
 	}
+	l.last = time.Now()
+	log.Printf("[sentinel] "+format, args...)
 }
 
 // routeTable is an immutable snapshot of the per-route limits, swapped
