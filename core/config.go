@@ -276,6 +276,29 @@ type AIConfig struct {
 	// across all AI features (threat analysis, NL queries, summaries, etc).
 	// 0 disables the cap. Default applied in ApplyDefaults: 500.
 	MaxCallsPerDay int64
+
+	// Redaction controls what threat data is masked before anything is sent
+	// to the provider. The zero value is the most private setting.
+	Redaction AIRedaction
+}
+
+// AIRedaction controls what leaves the process when an AI feature runs. The
+// zero value redacts: query-string values are masked (parameter names are
+// kept), request-body snippets are dropped, client IPs are truncated, and
+// emails, tokens, card numbers, and secret-looking values are scrubbed from
+// every text field. The attack fragments the WAF matched are kept (scrubbed),
+// so an analysis still sees the payload that triggered the detection.
+type AIRedaction struct {
+	// SendPayloads sends query strings and request-body snippets as recorded
+	// (still scrubbed unless DisableScrubbing is set).
+	SendPayloads bool
+
+	// SendFullIPs sends client IP addresses and cities unmasked.
+	SendFullIPs bool
+
+	// DisableScrubbing turns off the email, token, card-number, and secret
+	// scrubbing applied to every text field.
+	DisableScrubbing bool
 }
 
 // UserContext represents an authenticated user extracted from a request.

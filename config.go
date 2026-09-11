@@ -23,6 +23,7 @@ type (
 	WebhookConfig      = core.WebhookConfig
 	PagerDutyConfig    = core.PagerDutyConfig
 	AIConfig           = core.AIConfig
+	AIRedaction        = core.AIRedaction
 	UserContext        = core.UserContext
 	PerformanceConfig  = core.PerformanceConfig
 	CAPTCHAConfig      = core.CAPTCHAConfig

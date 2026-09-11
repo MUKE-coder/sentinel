@@ -253,10 +253,18 @@ func buildWAFRecommendationsPrompt(recentThreats []*sentinel.ThreatEvent) string
 			if len(typePaths[tt]) < 5 {
 				typePaths[tt] = append(typePaths[tt], t.Method+" "+t.Path)
 			}
-			if t.QueryParams != "" && len(typePayloads[tt]) < 3 {
+			// The matched attack fragments are the best samples to write a rule
+			// from — and, unlike whole query strings and bodies, they survive
+			// redaction. Fall back to the raw payload only without evidence.
+			for _, e := range t.Evidence {
+				if e.Matched != "" && len(typePayloads[tt]) < 3 {
+					typePayloads[tt] = append(typePayloads[tt], e.Matched)
+				}
+			}
+			if len(typePayloads[tt]) == 0 && t.QueryParams != "" {
 				typePayloads[tt] = append(typePayloads[tt], t.QueryParams)
 			}
-			if t.BodySnippet != "" && len(typePayloads[tt]) < 3 {
+			if len(typePayloads[tt]) == 0 && t.BodySnippet != "" {
 				typePayloads[tt] = append(typePayloads[tt], t.BodySnippet)
 			}
 		}

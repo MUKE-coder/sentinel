@@ -2,6 +2,39 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.4.0] - Unreleased
+
+### Added
+
+- **AI redaction, on by default** (`AIConfig.Redaction`). Before, threat
+  analysis, natural-language queries, and WAF recommendations sent query
+  strings, the first 500 bytes of request bodies, client IPs, User-Agents,
+  and matched evidence to the provider exactly as recorded — including any
+  emails, tokens, card numbers, or passwords they contained. Now, before
+  anything leaves the process: query-string values are masked (parameter
+  names kept), request-body snippets are dropped, IPv4 addresses lose their
+  last octet and IPv6 addresses are cut to their /48, cities are dropped,
+  and emails, JWTs, bearer tokens, Luhn-valid card numbers, secret-looking
+  key=value pairs, and long hex/base64 strings are scrubbed from every text
+  field. The attack fragments the WAF matched are kept (scrubbed), so an
+  analysis still sees the payload that triggered the detection.
+  `SendPayloads`, `SendFullIPs`, and `DisableScrubbing` opt back out.
+  Redaction runs directly around the network call (`ai.RedactingProvider`)
+  and never modifies stored data.
+- A data-egress test drives every AI feature with a threat full of personal
+  data through a real provider pointed at a capturing endpoint and asserts
+  exactly what was sent.
+
+### Behavior changes
+
+- AI features see redacted data by default, so analyses no longer quote
+  full query strings or request bodies. Set
+  `AI.Redaction.SendPayloads: true` (and `SendFullIPs: true`) for the
+  previous behavior; scrubbing still applies unless `DisableScrubbing` is
+  set.
+- WAF recommendations sample the matched attack fragments instead of raw
+  query strings and bodies.
+
 ## [2.3.1] - 2026-09-11
 
 ### 🔥 Fix
