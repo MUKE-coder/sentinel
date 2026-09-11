@@ -115,6 +115,11 @@ type AuditLog struct {
 	RequestID  string    `json:"request_id"`
 }
 
+// AuditResourceAuth is the AuditLog.Resource for authentication events:
+// logins to the host application observed by AuthShield and logins to the
+// Sentinel dashboard. The PCI-DSS report's auth_events section counts these.
+const AuditResourceAuth = "auth"
+
 // UserActivity represents a per-user activity record.
 type UserActivity struct {
 	ID         string    `json:"id"`

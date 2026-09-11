@@ -217,7 +217,9 @@ func (s *Server) handleUpdateAlertConfig(c *gin.Context) {
 	}
 
 	if req.MinSeverity != "" {
+		before := sentinel.JSONMap{"min_severity": string(s.config.Alerts.MinSeverity)}
 		s.config.Alerts.MinSeverity = sentinel.Severity(req.MinSeverity)
+		s.auditDashboard(c, "UPDATE", auditResourceAlertConfig, "alerts", before, sentinel.JSONMap{"min_severity": req.MinSeverity}, nil)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Alert config updated"})
@@ -275,6 +277,7 @@ func (s *Server) handleUnblockUser(c *gin.Context) {
 		return
 	}
 	s.authShield.UnblockUser(username)
+	s.auditDashboard(c, "DELETE", auditResourceAuthLockout, username, nil, nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message": "User unblocked", "username": username})
 }
 
@@ -321,6 +324,9 @@ func (s *Server) handleListAuditLogs(c *gin.Context) {
 // --- Compliance Report handlers ---
 
 func (s *Server) handleGDPRReport(c *gin.Context) {
+	if s.refuseEphemeralReport(c) {
+		return
+	}
 	windowStr := c.DefaultQuery("window", "720h") // default 30 days
 	window, err := time.ParseDuration(windowStr)
 	if err != nil {
@@ -336,6 +342,9 @@ func (s *Server) handleGDPRReport(c *gin.Context) {
 }
 
 func (s *Server) handlePCIDSSReport(c *gin.Context) {
+	if s.refuseEphemeralReport(c) {
+		return
+	}
 	report, err := s.reportGen.GeneratePCIDSS(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": "INTERNAL_ERROR"})
@@ -345,6 +354,9 @@ func (s *Server) handlePCIDSSReport(c *gin.Context) {
 }
 
 func (s *Server) handleSOC2Report(c *gin.Context) {
+	if s.refuseEphemeralReport(c) {
+		return
+	}
 	windowStr := c.DefaultQuery("window", "720h")
 	window, err := time.ParseDuration(windowStr)
 	if err != nil {
@@ -380,10 +392,13 @@ func (s *Server) handleUpdateWAFRules(c *gin.Context) {
 		return
 	}
 
+	before := sentinel.JSONMap{"mode": string(s.config.WAF.Mode), "rules": toJSONMap(s.config.WAF.Rules)}
 	if req.Mode != "" {
 		s.config.WAF.Mode = sentinel.WAFMode(req.Mode)
 	}
 	s.config.WAF.Rules = req.Rules
+	after := sentinel.JSONMap{"mode": string(s.config.WAF.Mode), "rules": toJSONMap(s.config.WAF.Rules)}
+	s.auditDashboard(c, "UPDATE", auditResourceWAFConfig, "waf", before, after, nil)
 
 	c.JSON(http.StatusOK, gin.H{"message": "WAF rules updated"})
 }
@@ -413,7 +428,9 @@ func (s *Server) handleAddCustomRule(c *gin.Context) {
 		return
 	}
 
-	if err := s.customRuleEngine.AddRule(rule); err != nil {
+	err := s.customRuleEngine.AddRule(rule)
+	s.auditDashboard(c, "CREATE", auditResourceCustomRule, rule.ID, nil, toJSONMap(rule), err)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid regex pattern: " + err.Error(), "code": "BAD_REQUEST"})
 		return
 	}
@@ -432,6 +449,7 @@ func (s *Server) handleDeleteCustomRule(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found", "code": "NOT_FOUND"})
 		return
 	}
+	s.auditDashboard(c, "DELETE", auditResourceCustomRule, id, nil, nil, nil)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Custom rule deleted"})
 }
@@ -507,6 +525,7 @@ func (s *Server) handleUpdateRateLimits(c *gin.Context) {
 		return
 	}
 
+	before := sentinel.JSONMap{"by_route": toJSONMap(s.config.RateLimit.ByRoute)}
 	if req.ByRoute != nil {
 		if s.config.RateLimit.ByRoute == nil {
 			s.config.RateLimit.ByRoute = make(map[string]sentinel.Limit)
@@ -527,6 +546,8 @@ func (s *Server) handleUpdateRateLimits(c *gin.Context) {
 		}
 	}
 
+	s.auditDashboard(c, "UPDATE", auditResourceRateLimit, "by_route", before, sentinel.JSONMap{"by_route": toJSONMap(s.config.RateLimit.ByRoute)}, nil)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Rate limits updated"})
 }
 
@@ -546,6 +567,7 @@ func (s *Server) handleResetRateLimit(c *gin.Context) {
 		return
 	}
 	if s.rateLimiter.ResetKey(key) {
+		s.auditDashboard(c, "DELETE", auditResourceRateLimit, key, nil, nil, nil)
 		c.JSON(http.StatusOK, gin.H{"message": "Rate limit reset", "key": key})
 	} else {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Key not found", "code": "NOT_FOUND"})

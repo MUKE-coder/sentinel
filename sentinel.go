@@ -201,6 +201,14 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 		pipe.AddHandler(alertDispatcher)
 	}
 
+	// Per-user activity recording. Registered before every other Sentinel
+	// middleware so it wraps them all and records the final status; the
+	// extractor itself runs after the handler, once the host app's auth has
+	// populated the context.
+	if config.UserExtractor != nil {
+		router.Use(middleware.UserActivityMiddleware(config.UserExtractor, pipe, config.Dashboard.Prefix))
+	}
+
 	// 5e. Initialize auth shield (with optional CAPTCHA tier)
 	var authShield *middleware.AuthShield
 	if config.AuthShield.Enabled {
@@ -301,7 +309,7 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	}
 
 	// 12. Start background goroutines
-	go backgroundCleanup(store, config.Storage.RetentionDays)
+	go backgroundCleanup(store, config.Storage.RetentionDays, config.Storage.AuditRetentionDays)
 	go backgroundScoreRecompute(scoreEngine)
 
 	log.Printf("[sentinel] Mounted at %s (WAF: %v, RateLimit: %v, Storage: %s)",
@@ -340,13 +348,17 @@ func buildCAPTCHAProvider(config Config) captcha.Provider {
 	return nil
 }
 
-func backgroundCleanup(store storage.Store, retentionDays int) {
+func backgroundCleanup(store storage.Store, retentionDays, auditRetentionDays int) {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		ctx := context.Background()
 		store.Cleanup(ctx, time.Duration(retentionDays)*24*time.Hour)
+		// Audit logs are evidence and keep their own, longer retention.
+		if p, ok := store.(storage.AuditPruner); ok {
+			p.PruneAuditLogs(ctx, time.Duration(auditRetentionDays)*24*time.Hour)
+		}
 	}
 }
 

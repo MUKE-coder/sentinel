@@ -20,6 +20,12 @@ type Config struct {
 	Geo         GeoConfig
 	Alerts      AlertConfig
 	AI          *AIConfig
+	// UserExtractor identifies the authenticated user behind a request. When
+	// set, Sentinel records one UserActivity per authenticated request — the
+	// data behind the Users page, the GDPR report's per-user section, and
+	// anomaly detection. It runs after the handler, so it can read whatever
+	// your auth middleware put on the context; return nil for anonymous
+	// requests.
 	UserExtractor func(c *gin.Context) *UserContext
 	Performance PerformanceConfig
 	CAPTCHA     CAPTCHAConfig
@@ -53,11 +59,20 @@ type DashboardConfig struct {
 
 // StorageConfig configures the storage backend.
 type StorageConfig struct {
-	Driver        StorageDriver
-	DSN           string
+	Driver StorageDriver
+	DSN    string
+
+	// RetentionDays is how long threat, user-activity, and performance
+	// records are kept. Default: 90.
 	RetentionDays int
-	MaxOpenConns  int
-	MaxIdleConns  int
+
+	// AuditRetentionDays is how long audit log entries are kept. Separate
+	// from RetentionDays because audit history is evidence: PCI-DSS 10.5.1
+	// requires 12 months of it. Default: 365.
+	AuditRetentionDays int
+
+	MaxOpenConns int
+	MaxIdleConns int
 }
 
 // WAFConfig configures the Web Application Firewall.
@@ -304,6 +319,9 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.Storage.RetentionDays == 0 {
 		c.Storage.RetentionDays = 90
+	}
+	if c.Storage.AuditRetentionDays == 0 {
+		c.Storage.AuditRetentionDays = 365
 	}
 	if c.Storage.MaxOpenConns == 0 {
 		c.Storage.MaxOpenConns = 10

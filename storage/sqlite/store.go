@@ -4,6 +4,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"sort"
 	"strings"
@@ -16,8 +17,11 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// Ensure Store implements storage.Store.
-var _ storage.Store = (*Store)(nil)
+// Ensure Store implements storage.Store and prunes audit logs separately.
+var (
+	_ storage.Store       = (*Store)(nil)
+	_ storage.AuditPruner = (*Store)(nil)
+)
 
 // Store is a SQLite implementation of the storage.Store interface.
 type Store struct {
@@ -668,14 +672,21 @@ func (s *Store) SaveSecurityScore(ctx context.Context, score *sentinel.SecurityS
 	return s.db.WithContext(ctx).Create(&row).Error
 }
 
-// Cleanup removes events older than the specified duration.
+// Cleanup removes threat, user-activity, and performance records older than
+// the specified duration. Audit logs keep their own retention — see
+// PruneAuditLogs.
 func (s *Store) Cleanup(ctx context.Context, olderThan time.Duration) error {
 	cutoff := time.Now().Add(-olderThan)
 	s.db.WithContext(ctx).Where("timestamp < ?", cutoff).Delete(&threatEventRow{})
 	s.db.WithContext(ctx).Where("timestamp < ?", cutoff).Delete(&userActivityRow{})
 	s.db.WithContext(ctx).Where("timestamp < ?", cutoff).Delete(&performanceMetricRow{})
-	s.db.WithContext(ctx).Where("timestamp < ?", cutoff).Delete(&auditLogRow{})
 	return nil
+}
+
+// PruneAuditLogs removes audit log entries older than the specified duration.
+func (s *Store) PruneAuditLogs(ctx context.Context, olderThan time.Duration) error {
+	cutoff := time.Now().Add(-olderThan)
+	return s.db.WithContext(ctx).Where("timestamp < ?", cutoff).Delete(&auditLogRow{}).Error
 }
 
 // Close closes the database connection.
@@ -687,24 +698,199 @@ func (s *Store) Close() error {
 	return sqlDB.Close()
 }
 
-// ListUsers returns a summary of all users (stub).
+// ListUsers summarizes every user with recorded activity, most recently seen
+// first. ThreatCount covers threats attributed to the user directly (anomaly
+// detection) and threats the WAF logged on one of their requests.
 func (s *Store) ListUsers(ctx context.Context) ([]*sentinel.UserSummary, error) {
-	return []*sentinel.UserSummary{}, nil
+	rows, err := s.db.WithContext(ctx).Model(&userActivityRow{}).
+		Select("user_id, MAX(user_email), COUNT(*), MAX(timestamp)").
+		Where("user_id <> ''").
+		Group("user_id").
+		Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	users := []*sentinel.UserSummary{}
+	byID := make(map[string]*sentinel.UserSummary)
+	for rows.Next() {
+		var (
+			u        sentinel.UserSummary
+			email    sql.NullString
+			lastSeen any
+		)
+		if err := rows.Scan(&u.UserID, &email, &u.ActivityCount, &lastSeen); err != nil {
+			return nil, err
+		}
+		u.Email = email.String
+		u.LastSeen = parseDBTime(lastSeen)
+		users = append(users, &u)
+		byID[u.UserID] = &u
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	type userCount struct {
+		UserID string
+		N      int64
+	}
+	var direct, linked []userCount
+	if err := s.db.WithContext(ctx).Model(&threatEventRow{}).
+		Select("user_id, COUNT(*) AS n").
+		Where("user_id <> ''").
+		Group("user_id").
+		Scan(&direct).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.WithContext(ctx).Model(&userActivityRow{}).
+		Select("user_id, COUNT(*) AS n").
+		Where("user_id <> '' AND threat_id <> ''").
+		Group("user_id").
+		Scan(&linked).Error; err != nil {
+		return nil, err
+	}
+	for _, c := range append(direct, linked...) {
+		if u, ok := byID[c.UserID]; ok {
+			u.ThreatCount += c.N
+		}
+	}
+
+	sort.Slice(users, func(i, j int) bool {
+		return users[i].LastSeen.After(users[j].LastSeen)
+	})
+	return users, nil
 }
 
-// GetAttackTrends returns attack trend data for the given window and interval (stub).
+// GetAttackTrends buckets threats in the window by hour ("hour") or UTC day
+// (anything else) with per-type counts, oldest period first.
 func (s *Store) GetAttackTrends(ctx context.Context, window time.Duration, interval string) ([]*sentinel.AttackTrend, error) {
-	return []*sentinel.AttackTrend{}, nil
+	var rows []threatEventRow
+	err := s.db.WithContext(ctx).Model(&threatEventRow{}).
+		Select("timestamp, threat_types").
+		Where("timestamp >= ?", time.Now().Add(-window)).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	byPeriod := make(map[string]*sentinel.AttackTrend)
+	for _, row := range rows {
+		period := row.Timestamp.UTC().Truncate(24 * time.Hour).Format("2006-01-02")
+		if interval == "hour" {
+			period = row.Timestamp.UTC().Truncate(time.Hour).Format("2006-01-02T15:00")
+		}
+		trend, ok := byPeriod[period]
+		if !ok {
+			trend = &sentinel.AttackTrend{Period: period, ByType: make(map[string]int64)}
+			byPeriod[period] = trend
+		}
+		trend.Total++
+		var types []string
+		json.Unmarshal([]byte(row.ThreatTypes), &types)
+		for _, tt := range types {
+			trend.ByType[tt]++
+		}
+	}
+
+	trends := make([]*sentinel.AttackTrend, 0, len(byPeriod))
+	for _, trend := range byPeriod {
+		trends = append(trends, trend)
+	}
+	sort.Slice(trends, func(i, j int) bool {
+		return trends[i].Period < trends[j].Period
+	})
+	return trends, nil
 }
 
-// GetGeoStats returns geographic statistics for threats in the given window (stub).
+// GetGeoStats counts threats in the window per country, most-attacking first.
 func (s *Store) GetGeoStats(ctx context.Context, window time.Duration) ([]*sentinel.GeoStats, error) {
-	return []*sentinel.GeoStats{}, nil
+	var rows []struct {
+		Country string
+		N       int64
+		Lat     float64
+		Lng     float64
+	}
+	err := s.db.WithContext(ctx).Model(&threatEventRow{}).
+		Select("country, COUNT(*) AS n, MAX(lat) AS lat, MAX(lng) AS lng").
+		Where("timestamp >= ? AND country <> ''", time.Now().Add(-window)).
+		Group("country").
+		Order("n DESC, country ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	stats := make([]*sentinel.GeoStats, 0, len(rows))
+	for _, r := range rows {
+		stats = append(stats, &sentinel.GeoStats{
+			Country:     r.Country,
+			CountryCode: r.Country,
+			Count:       r.N,
+			Lat:         r.Lat,
+			Lng:         r.Lng,
+		})
+	}
+	return stats, nil
 }
 
-// GetTopTargets returns the most targeted routes in the given window (stub).
+// GetTopTargets returns the most attacked route/method pairs in the window.
+// A limit of 0 or less returns all of them.
 func (s *Store) GetTopTargets(ctx context.Context, window time.Duration, limit int) ([]*sentinel.TopTarget, error) {
-	return []*sentinel.TopTarget{}, nil
+	query := s.db.WithContext(ctx).Model(&threatEventRow{}).
+		Select("path, method, COUNT(*) AS n").
+		Where("timestamp >= ?", time.Now().Add(-window)).
+		Group("path, method").
+		Order("n DESC, path ASC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	var rows []struct {
+		Path   string
+		Method string
+		N      int64
+	}
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	targets := make([]*sentinel.TopTarget, 0, len(rows))
+	for _, r := range rows {
+		targets = append(targets, &sentinel.TopTarget{Route: r.Path, Method: r.Method, Count: r.N})
+	}
+	return targets, nil
+}
+
+// dbTimeLayouts are the text forms an aggregated timestamp can come back in.
+var dbTimeLayouts = []string{
+	"2006-01-02 15:04:05.999999999-07:00",
+	time.RFC3339Nano,
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02T15:04:05.999999999",
+}
+
+// parseDBTime converts an aggregate such as MAX(timestamp) to time.Time. An
+// aggregate loses the column's declared type, so drivers differ: Postgres
+// returns time.Time, the pure-Go SQLite driver returns the stored text.
+func parseDBTime(v any) time.Time {
+	var s string
+	switch t := v.(type) {
+	case time.Time:
+		return t
+	case string:
+		s = t
+	case []byte:
+		s = string(t)
+	default:
+		return time.Time{}
+	}
+	for _, layout := range dbTimeLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // --- conversion helpers ---

@@ -89,13 +89,28 @@ func ValidateConfig(config Config) []ConfigIssue {
 
 	// --- Storage ---
 	switch config.Storage.Driver {
-	case SQLite, Postgres, Memory:
+	case SQLite, Postgres:
+	case Memory:
+		report(IssueWarning, "Storage.Driver",
+			"in-memory storage loses every threat, block, and audit entry on restart — compliance reports cover only the time since the last start and are refused in release mode")
 	case MySQL:
 		report(IssueError, "Storage.Driver",
 			"the MySQL driver is not implemented — Mount silently falls back to in-memory storage and all security data is lost on restart; use sqlite or postgres")
 	default:
 		report(IssueError, "Storage.Driver",
 			"unknown driver %q — Mount silently falls back to in-memory storage and all security data is lost on restart", config.Storage.Driver)
+	}
+
+	if config.Storage.RetentionDays < 0 {
+		report(IssueError, "Storage.RetentionDays",
+			"%d is negative — the cleanup cutoff lands in the future and every threat, activity, and performance record is deleted on the next run", config.Storage.RetentionDays)
+	}
+	if config.Storage.AuditRetentionDays < 0 {
+		report(IssueError, "Storage.AuditRetentionDays",
+			"%d is negative — the cleanup cutoff lands in the future and every audit log entry is deleted on the next run", config.Storage.AuditRetentionDays)
+	} else if config.Storage.AuditRetentionDays < 365 {
+		report(IssueWarning, "Storage.AuditRetentionDays",
+			"%d days of audit history is below the 12 months PCI-DSS 10.5.1 requires", config.Storage.AuditRetentionDays)
 	}
 
 	// --- Dashboard ---
@@ -163,6 +178,12 @@ func ValidateConfig(config Config) []ConfigIssue {
 				"CAPTCHAThreshold (%d) >= MaxFailedAttempts (%d) — the lockout always fires first and the CAPTCHA tier is unreachable",
 				config.AuthShield.CAPTCHAThreshold, config.AuthShield.MaxFailedAttempts)
 		}
+	}
+
+	// --- Anomaly detection ---
+	if config.Anomaly.Enabled && config.UserExtractor == nil {
+		report(IssueError, "Anomaly.Enabled",
+			"anomaly detection analyses per-user activity, which is recorded only when UserExtractor is set — without it the detector never sees an event")
 	}
 
 	// --- CAPTCHA ---

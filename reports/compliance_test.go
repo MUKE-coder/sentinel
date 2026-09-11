@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -203,5 +204,124 @@ func TestGenerateGDPR_EmptyStore(t *testing.T) {
 	}
 	if report.Summary.TotalUsers != 0 {
 		t.Errorf("expected 0 users, got %d", report.Summary.TotalUsers)
+	}
+}
+
+func hasWarning(p reports.Provenance, substr string) bool {
+	for _, w := range p.Warnings {
+		if strings.Contains(w, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func durableSource() reports.SourceInfo {
+	return reports.SourceInfo{StorageDriver: "sqlite", RetentionDays: 90, AuditRetentionDays: 365, UserActivityRecorded: true}
+}
+
+func TestProvenance_DurableStoreWithCoverageGap(t *testing.T) {
+	store := memory.New()
+	seedTestData(t, store) // the oldest record is only hours old
+	gen := reports.NewGenerator(store)
+	gen.SetSourceInfo(durableSource())
+
+	report, err := gen.GenerateSOC2(context.Background(), 720*time.Hour)
+	if err != nil {
+		t.Fatalf("GenerateSOC2: %v", err)
+	}
+	p := report.Provenance
+	if !p.Durable || p.StorageDriver != "sqlite" || p.AuditRetentionDays != 365 {
+		t.Errorf("unexpected provenance %+v", p)
+	}
+	if p.OldestAuditEntry == nil || time.Since(*p.OldestAuditEntry) < 119*time.Minute {
+		t.Errorf("expected the oldest audit entry (~2h old), got %v", p.OldestAuditEntry)
+	}
+	if !hasWarning(p, "oldest stored record") {
+		t.Errorf("a 30-day window over hours of data should warn about coverage, got %v", p.Warnings)
+	}
+	if hasWarning(p, "lost on every restart") || hasWarning(p, "not reported") {
+		t.Errorf("unexpected durability warning for sqlite: %v", p.Warnings)
+	}
+}
+
+func TestProvenance_MemoryStoreIsNotDurable(t *testing.T) {
+	store := memory.New()
+	seedTestData(t, store)
+	gen := reports.NewGenerator(store)
+	gen.SetSourceInfo(reports.SourceInfo{StorageDriver: "memory", UserActivityRecorded: true})
+
+	report, _ := gen.GenerateGDPR(context.Background(), 24*time.Hour)
+	if report.Provenance.Durable || !hasWarning(report.Provenance, "lost on every restart") {
+		t.Errorf("memory storage must be flagged as not durable, got %+v", report.Provenance)
+	}
+}
+
+func TestProvenance_UnknownSourceAndEmptyStore(t *testing.T) {
+	report, _ := reports.NewGenerator(memory.New()).GenerateGDPR(context.Background(), 24*time.Hour)
+	p := report.Provenance
+	if !hasWarning(p, "not reported") {
+		t.Errorf("expected an unknown-storage warning, got %v", p.Warnings)
+	}
+	if !hasWarning(p, "No threat events or audit entries") {
+		t.Errorf("an empty store must say empty means no data, got %v", p.Warnings)
+	}
+}
+
+func TestProvenance_WindowLongerThanRetention(t *testing.T) {
+	store := memory.New()
+	seedTestData(t, store)
+	gen := reports.NewGenerator(store)
+	src := durableSource()
+	src.RetentionDays = 7
+	gen.SetSourceInfo(src)
+
+	report, _ := gen.GenerateSOC2(context.Background(), 720*time.Hour)
+	if !hasWarning(report.Provenance, "Storage.RetentionDays") {
+		t.Errorf("a 30-day window over 7-day retention should warn, got %v", report.Provenance.Warnings)
+	}
+}
+
+func TestGeneratePCIDSS_WarnsOnShortAuditRetention(t *testing.T) {
+	store := memory.New()
+	seedTestData(t, store)
+	gen := reports.NewGenerator(store)
+	src := durableSource()
+	src.AuditRetentionDays = 90
+	gen.SetSourceInfo(src)
+
+	report, _ := gen.GeneratePCIDSS(context.Background())
+	if !hasWarning(report.Provenance, "10.5.1") {
+		t.Errorf("90-day audit retention should cite PCI-DSS 10.5.1, got %v", report.Provenance.Warnings)
+	}
+}
+
+func TestGeneratePCIDSS_CountsAuthAuditEntries(t *testing.T) {
+	store := memory.New()
+	ctx := context.Background()
+	for i, ok := range []bool{true, false, false} {
+		store.SaveAuditLog(ctx, &sentinel.AuditLog{
+			ID: fmt.Sprintf("login-%d", i), Timestamp: time.Now().Add(-time.Hour),
+			Action: "LOGIN", Resource: sentinel.AuditResourceAuth, Success: ok,
+		})
+	}
+
+	report, _ := reports.NewGenerator(store).GeneratePCIDSS(ctx)
+	if report.AuthEvents.TotalAttempts != 3 || report.AuthEvents.FailureCount != 2 {
+		t.Errorf("expected 3 attempts / 2 failures, got %+v", report.AuthEvents)
+	}
+}
+
+func TestGenerateGDPR_WarnsWhenUserActivityNotRecorded(t *testing.T) {
+	store := memory.New()
+	seedTestData(t, store)
+	gen := reports.NewGenerator(store)
+	src := durableSource()
+	src.UserActivityRecorded = false
+	gen.SetSourceInfo(src)
+
+	report, _ := gen.GenerateGDPR(context.Background(), 720*time.Hour)
+	if !hasWarning(report.Provenance, "UserExtractor") {
+		t.Errorf("expected a UserExtractor warning, got %v", report.Provenance.Warnings)
 	}
 }

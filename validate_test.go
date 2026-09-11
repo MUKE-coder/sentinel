@@ -201,6 +201,26 @@ func TestValidateConfigCatchesSilentTraps(t *testing.T) {
 			Config{IPReputation: IPReputationConfig{Enabled: true}},
 			IssueError, "IPReputation.AbuseIPDBKey",
 		},
+		{
+			"anomaly detection without a user extractor",
+			Config{Anomaly: AnomalyConfig{Enabled: true}},
+			IssueError, "Anomaly.Enabled",
+		},
+		{
+			"audit retention below the PCI-DSS minimum",
+			Config{Storage: StorageConfig{AuditRetentionDays: 90}},
+			IssueWarning, "Storage.AuditRetentionDays",
+		},
+		{
+			"negative retention deletes everything",
+			Config{Storage: StorageConfig{RetentionDays: -1}},
+			IssueError, "Storage.RetentionDays",
+		},
+		{
+			"in-memory storage",
+			Config{Storage: StorageConfig{Driver: Memory}},
+			IssueWarning, "Storage.Driver",
+		},
 	}
 
 	for _, tc := range cases {
