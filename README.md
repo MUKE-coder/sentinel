@@ -3,7 +3,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
-[![Release](https://img.shields.io/badge/Release-v2.2.1-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Release](https://img.shields.io/badge/Release-v2.2.2-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
 [![Tests](https://img.shields.io/badge/Tests-17%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
 [![Dashboard Pages](https://img.shields.io/badge/Dashboard-13%20pages-purple)](https://github.com/MUKE-coder/sentinel)
@@ -19,6 +19,16 @@ sentinel.Mount(r, nil, sentinel.Config{})
 r.Run(":8080")
 // Dashboard → http://localhost:8080/sentinel/ui
 ```
+
+## What's new in v2.2.2
+
+**Security patch — upgrade if you run behind a reverse proxy, expose the dashboard, or use `sentinel.HTTPClient()`.**
+
+- **`X-Forwarded-For` spoofing closed** — behind a trusted proxy the leftmost (client-written) entry was used, so any client could choose its own IP and slip rate limits, IP blocks, and AuthShield. The chain is now walked right to left past your `TrustedProxies`.
+- **Dashboard login limiter can't be reset by rotating headers** — it used gin's `c.ClientIP()`, which trusts `X-Forwarded-For` from anyone. It now uses the same trusted-proxy logic, exported as `middleware.ClientIP(c)`.
+- **SQL injection via `sort_by` on threat listings fixed** (SQLite/Postgres) — the column is now allowlisted.
+- **SSRF client bypasses closed** — `[::]`, NAT64/6to4-embedded internal targets, zoned and IPv4-mapped IPv6 literals, Oracle Cloud metadata `192.0.0.192`, and trailing-dot metadata hostnames. `AllowedHosts` now works for internal hosts.
+- **Compliance reports count correctly** — PCI-DSS "blocked threats" filtered on the wrong field and SOC 2's blocked count could never exceed 1. Reports now flag any listing that hit its row cap in a `truncated` field.
 
 ## What's new in v2.2.1
 

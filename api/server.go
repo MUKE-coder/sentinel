@@ -211,7 +211,11 @@ func (s *Server) RegisterRoutes(r *gin.Engine, prefix string) {
 // --- Auth handlers ---
 
 func (s *Server) handleLogin(c *gin.Context) {
-	clientIP := c.ClientIP()
+	// Key the limiter on the trusted-proxy-aware client IP. gin's
+	// c.ClientIP() believes X-Forwarded-For from any peer unless the host
+	// app called SetTrustedProxies, so rotating that header reset the login
+	// budget and the brute-force limit never tripped.
+	clientIP := middleware.ClientIP(c)
 
 	if !s.loginRL.Check(clientIP) {
 		c.JSON(http.StatusTooManyRequests, gin.H{

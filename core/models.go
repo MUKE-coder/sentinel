@@ -249,9 +249,12 @@ type ThreatFilter struct {
 	StartTime *time.Time `json:"start_time,omitempty"`
 	EndTime   *time.Time `json:"end_time,omitempty"`
 	Resolved  *bool      `json:"resolved,omitempty"`
+	Blocked   *bool      `json:"blocked,omitempty"`
 	Search    string     `json:"search,omitempty"`
 	Page      int        `json:"page"`
 	PageSize  int        `json:"page_size"`
+	// SortBy is one of "timestamp" (default), "severity", "ip", or "path".
+	// Other values fall back to "timestamp".
 	SortBy    string     `json:"sort_by"`
 	SortOrder string     `json:"sort_order"`
 }

@@ -2,6 +2,8 @@ package reports_test
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -15,7 +17,7 @@ func seedTestData(t *testing.T, store *memory.Store) {
 	ctx := context.Background()
 	now := time.Now()
 
-	// Seed some threats
+	// Seed some threats — 5 total, 3 blocked (i = 0, 2, 4), none resolved.
 	for i := 0; i < 5; i++ {
 		store.SaveThreat(ctx, &sentinel.ThreatEvent{
 			ID:          "threat-" + string(rune('a'+i)),
@@ -88,6 +90,9 @@ func TestGenerateGDPR(t *testing.T) {
 	if report.Summary.TotalDeletions != 1 {
 		t.Errorf("expected summary.TotalDeletions=1, got %d", report.Summary.TotalDeletions)
 	}
+	if len(report.Truncated) != 0 {
+		t.Errorf("expected no truncated sections, got %v", report.Truncated)
+	}
 }
 
 func TestGeneratePCIDSS(t *testing.T) {
@@ -106,11 +111,27 @@ func TestGeneratePCIDSS(t *testing.T) {
 	if len(report.SecurityIncidents) != 5 {
 		t.Errorf("expected 5 incidents, got %d", len(report.SecurityIncidents))
 	}
+	if report.Summary.TotalIncidents != 5 {
+		t.Errorf("expected summary.TotalIncidents=5, got %d", report.Summary.TotalIncidents)
+	}
 	if report.Summary.CriticalIncidents != 5 {
 		t.Errorf("expected 5 critical, got %d", report.Summary.CriticalIncidents)
 	}
 	if report.Summary.UniqueAttackerIPs != 1 {
 		t.Errorf("expected 1 unique IP, got %d", report.Summary.UniqueAttackerIPs)
+	}
+	// Before v2.2.2 BlockedThreats filtered on Resolved and listed none of
+	// the three blocked (unresolved) threats.
+	if len(report.BlockedThreats) != 3 {
+		t.Errorf("expected 3 blocked threats, got %d", len(report.BlockedThreats))
+	}
+	for _, th := range report.BlockedThreats {
+		if !th.Blocked {
+			t.Errorf("threat %s in BlockedThreats was not blocked", th.ID)
+		}
+	}
+	if report.Summary.BlockedCount != 3 {
+		t.Errorf("expected summary.BlockedCount=3, got %d", report.Summary.BlockedCount)
 	}
 }
 
@@ -129,6 +150,46 @@ func TestGenerateSOC2(t *testing.T) {
 	}
 	if report.Summary.TotalAuditEntries != 2 {
 		t.Errorf("expected 2 audit entries, got %d", report.Summary.TotalAuditEntries)
+	}
+	// Before v2.2.2 "detected" counted only resolved threats (0 here) and
+	// "blocked" was counted from a one-row page (at most 1).
+	if report.Summary.TotalThreatsDetected != 5 {
+		t.Errorf("expected 5 threats detected, got %d", report.Summary.TotalThreatsDetected)
+	}
+	if report.Summary.TotalThreatsBlocked != 3 {
+		t.Errorf("expected 3 threats blocked, got %d", report.Summary.TotalThreatsBlocked)
+	}
+	if report.MonitoringEvidence.TotalEventsProcessed != 5 {
+		t.Errorf("expected 5 events processed, got %d", report.MonitoringEvidence.TotalEventsProcessed)
+	}
+}
+
+func TestGenerateSOC2_FlagsTruncatedListing(t *testing.T) {
+	store := memory.New()
+	ctx := context.Background()
+	now := time.Now()
+	for i := 0; i < 1001; i++ {
+		store.SaveAuditLog(ctx, &sentinel.AuditLog{
+			ID:        fmt.Sprintf("audit-%d", i),
+			Timestamp: now.Add(-time.Minute),
+			Action:    "UPDATE",
+			Resource:  "orders",
+			Success:   true,
+		})
+	}
+
+	report, err := reports.NewGenerator(store).GenerateSOC2(ctx, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("GenerateSOC2 failed: %v", err)
+	}
+	if len(report.AccessControl.AuditLogs) != 1000 {
+		t.Errorf("expected the audit listing capped at 1000, got %d", len(report.AccessControl.AuditLogs))
+	}
+	if report.Summary.TotalAuditEntries != 1001 {
+		t.Errorf("expected summary to count all 1001 entries, got %d", report.Summary.TotalAuditEntries)
+	}
+	if !slices.Contains(report.Truncated, "access_control.audit_logs") {
+		t.Errorf("expected access_control.audit_logs flagged as truncated, got %v", report.Truncated)
 	}
 }
 

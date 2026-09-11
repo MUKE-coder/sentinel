@@ -2,6 +2,110 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.2.2] - 2026-09-11
+
+Security patch. Every fix below came out of verifying an external review of
+Sentinel line by line. Upgrade if you run behind a reverse proxy
+(`WAF.TrustedProxies` set), expose the dashboard, make outbound requests
+with `sentinel.HTTPClient()` / `safefetch`, or hand compliance reports to
+anyone.
+
+### 🔒 Security
+
+- **Client IP can no longer be spoofed through `X-Forwarded-For` behind a
+  trusted proxy.** The first (leftmost) entry was used — but proxies such as
+  nginx and Caddy *append* to the header, so the leftmost entry is whatever
+  the client sent. Any client behind a trusted proxy could pick its own IP
+  and slip per-IP rate limits, IP blocks, AuthShield lockouts, and threat
+  attribution. The chain is now walked right to left, skipping
+  `TrustedProxies`, and the first untrusted hop is the client. All header
+  lines are read in order (a proxy may add its own line rather than extend
+  the client's), `ip:port` and IPv4-mapped entries are normalised, and an
+  unparseable header falls back to the proxy address instead of
+  `X-Real-IP`. A dual-stack listener's `::ffff:a.b.c.d` peer address now
+  matches IPv4 `TrustedProxies` entries.
+- **Dashboard login and CSP-report rate limits key on the real client IP.**
+  Both used gin's `c.ClientIP()`, which trusts `X-Forwarded-For` from every
+  peer unless the host app called `SetTrustedProxies` — rotating the header
+  gave a brute-forcer a fresh 10-attempt budget on every request. They now
+  use the same trusted-proxy logic as the middleware, exported as
+  `middleware.ClientIP(c)`.
+- **SQL injection via `sort_by` on threat listings (SQLite / Postgres).** The
+  dashboard API passed the query parameter into `ORDER BY` verbatim.
+  Exploiting it needed a dashboard token, but outside release mode the
+  default JWT secret makes tokens forgeable. `ThreatFilter.SortBy` is now
+  allowlisted (`timestamp`, `severity`, `ip`, `path`); anything else falls
+  back to `timestamp`.
+- **SSRF client (`safefetch` / `sentinel.HTTPClient()`) closes several
+  bypasses:**
+  - `[::]` — the IPv6 unspecified address, which dials localhost like
+    `0.0.0.0` — was allowed.
+  - Newly denied: `192.0.0.0/24` (includes Oracle Cloud metadata
+    `192.0.0.192`), `198.18.0.0/15`, `240.0.0.0/4` (incl. broadcast), IPv6
+    multicast, Teredo (`2001::/32`), local-use NAT64 (`64:ff9b:1::/48`).
+  - NAT64 (`64:ff9b::/96`) and 6to4 (`2002::/16`) addresses are judged by
+    the IPv4 target they embed — `64:ff9b::a9fe:a9fe` reached
+    `169.254.169.254`. Public targets stay reachable, so DNS64 on IPv6-only
+    hosts keeps working.
+  - Zoned IPv6 literals (`[fe80::1%25eth0]`) and IPv4-mapped literals
+    (`[::ffff:127.0.0.1]`) never matched any range; both are normalised
+    before the check.
+  - Hostnames are compared without the DNS root dot, so
+    `metadata.google.internal.` no longer dodges the metadata block;
+    `metadata.goog` is blocked too.
+  - The pre-flight DNS lookup honours the request context, and blocked
+    redirects are reported to the pipeline like other blocks.
+
+### 🔥 Fix
+
+- **`safefetch` `AllowedHosts` works for internal hosts.** The connect-time
+  guard never consulted it, so an allowed host that resolved to a private
+  address passed validation and then failed at dial. Allowed hosts now skip
+  the connect-time IP check, as documented.
+- **Compliance reports compute correct numbers.**
+  - PCI-DSS `blocked_threats` filtered on `resolved`, listing threats an
+    operator had triaged rather than threats Sentinel blocked. It now
+    filters on the new `ThreatFilter.Blocked`.
+  - SOC 2 `total_threats_blocked` was counted from a one-row page, so it
+    never exceeded 1; `total_threats_detected` counted only resolved
+    threats. Both now come from the store's aggregate stats.
+  - SOC 2 `total_events_processed` was threats + blocked + unique IPs — a
+    sum that counted every blocked threat twice. It is now the number of
+    threat events recorded in the window.
+  - PCI-DSS summary counts and GDPR / SOC 2 totals come from store totals,
+    so they stay exact when a listing hits its row cap; GDPR `access_count`
+    counts all of a user's activity in the window, not the first 1000 rows.
+- **Reports say when a list is partial.** Each report has a new `truncated`
+  field naming the sections whose listing hit its row cap.
+
+### Added
+
+- `ThreatFilter.Blocked` (`*bool`) — filter threat listings by whether
+  Sentinel blocked them. Supported by the memory, SQLite, and Postgres
+  stores.
+- `middleware.ClientIP(c)` — the trusted-proxy-aware client IP, for host
+  code that needs to agree with Sentinel about who sent a request.
+
+### Behavior changes
+
+- Behind a trusted proxy, the recorded client IP for a request whose
+  `X-Forwarded-For` carries client-supplied entries is now the address your
+  proxy actually saw. Blocks and rate-limit counters that were keyed on
+  spoofed addresses stop matching — which is the point.
+- `safefetch` refuses the newly denied ranges. If you legitimately fetch
+  from one, allow it with `AllowedCIDRs` or `AllowedHosts`.
+- SOC 2 `total_events_processed` changed meaning (see above).
+
+### Known gaps (planned for v2.3.0)
+
+Some report sections still read data nothing writes: no built-in component
+emits `READ` or `Resource: "auth"` audit entries (GDPR exports and PCI-DSS
+auth events stay empty), the SQLite / Postgres `ListUsers` is a stub (GDPR
+user access stays empty on the default store), and `Config.UserExtractor`
+is never read, so no user activity is recorded and anomaly detection never
+fires. These are fixed in v2.3.0; until then treat those sections as empty,
+not clean.
+
 ## [2.2.1] - 2026-07-16
 
 Fixes issue [#15](https://github.com/MUKE-coder/sentinel/issues/15): the GORM

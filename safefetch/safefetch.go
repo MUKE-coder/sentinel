@@ -51,8 +51,8 @@ type Options struct {
 	AllowedSchemes []string
 
 	// AllowedHosts is an explicit allowlist of hostnames that override the
-	// IP-range denylist. Use for legitimate internal calls where you know
-	// the target.
+	// IP-range denylist, at request build and at connect time. Use for
+	// legitimate internal calls where you know the target.
 	AllowedHosts []string
 
 	// AllowedCIDRs is an explicit allowlist of CIDR ranges that override the
@@ -73,6 +73,11 @@ type Options struct {
 	Reporter Reporter
 }
 
+// lookupIPAddr resolves hostnames for the pre-flight check. A variable so
+// tests can stand in for resolvers that turn numeric forms like
+// "2130706433" or "0x7f.1" into 127.0.0.1, as getaddrinfo does.
+var lookupIPAddr = net.DefaultResolver.LookupIPAddr
+
 // Client returns an SSRF-hardened *http.Client. Calls to URLs that fail
 // the policy return ErrBlocked. Reuses one client across calls — safe for
 // concurrent use.
@@ -86,33 +91,26 @@ func Client(opts Options) *http.Client {
 	allowedCIDRs := parseCIDRs(opts.AllowedCIDRs)
 	allowedHosts := make(map[string]bool, len(opts.AllowedHosts))
 	for _, h := range opts.AllowedHosts {
-		allowedHosts[strings.ToLower(strings.TrimSpace(h))] = true
+		allowedHosts[normalizeHost(h)] = true
 	}
 
-	dialer := &net.Dialer{
-		Timeout: 10 * time.Second,
-		Control: func(network, address string, c syscall.RawConn) error {
-			// network is "tcp4"/"tcp6"; address is "ip:port" already resolved.
-			host, _, err := net.SplitHostPort(address)
-			if err != nil {
-				return err
-			}
-			if hostExplicitlyAllowed("", allowedHosts) { // host-allow already vetted upstream
-				return nil
-			}
-			addr, err := netip.ParseAddr(host)
-			if err != nil {
-				return fmt.Errorf("%w: dial resolved to invalid IP %q", ErrBlocked, host)
-			}
-			if !opts.AllowPrivateRanges && isBlockedIP(addr, allowedCIDRs) {
-				return fmt.Errorf("%w: dial resolved to disallowed IP %s", ErrBlocked, host)
-			}
-			return nil
-		},
-	}
+	// guarded re-checks every resolved address at connect time — Control
+	// runs after DNS resolution, once per address attempted. direct skips
+	// that check and is used only for AllowedHosts, which the operator has
+	// vetted and which may legitimately resolve to private addresses.
+	guarded := &net.Dialer{Timeout: 10 * time.Second, Control: dialControl(opts, allowedCIDRs)}
+	direct := &net.Dialer{Timeout: 10 * time.Second}
 
 	transport := &http.Transport{
-		DialContext:           dialer.DialContext,
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			// address is still "hostname:port" here (resolution happens inside
+			// the dialer), so this is the one place a connection can be
+			// matched against AllowedHosts.
+			if host, _, err := net.SplitHostPort(address); err == nil && hostExplicitlyAllowed(normalizeHost(host), allowedHosts) {
+				return direct.DialContext(ctx, network, address)
+			}
+			return guarded.DialContext(ctx, network, address)
+		},
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          50,
 		IdleConnTimeout:       90 * time.Second,
@@ -131,8 +129,32 @@ func Client(opts Options) *http.Client {
 			if len(via) >= 10 {
 				return fmt.Errorf("safefetch: stopped after 10 redirects")
 			}
-			return check(req)
+			if err := check(req); err != nil {
+				opts.report(req, err)
+				return err
+			}
+			return nil
 		},
+	}
+}
+
+// dialControl returns the connect-time guard. The address it sees is the
+// resolved "ip:port" actually being dialled, so a hostname that passed
+// validation and then re-resolves to an internal address is still refused.
+func dialControl(opts Options, allowedCIDRs []netip.Prefix) func(network, address string, c syscall.RawConn) error {
+	return func(network, address string, _ syscall.RawConn) error {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			return fmt.Errorf("%w: unparseable dial address %q", ErrBlocked, address)
+		}
+		addr, err := netip.ParseAddr(host)
+		if err != nil {
+			return fmt.Errorf("%w: dial resolved to invalid IP %q", ErrBlocked, host)
+		}
+		if !opts.AllowPrivateRanges && isBlockedIP(addr, allowedCIDRs) {
+			return fmt.Errorf("%w: dial resolved to disallowed IP %s", ErrBlocked, host)
+		}
+		return nil
 	}
 }
 
@@ -185,7 +207,7 @@ func validateRequest(req *http.Request, opts Options, allowedHosts map[string]bo
 	if !contains(opts.AllowedSchemes, scheme) {
 		return fmt.Errorf("%w: disallowed scheme %q", ErrBlocked, scheme)
 	}
-	host := strings.ToLower(req.URL.Hostname())
+	host := normalizeHost(req.URL.Hostname())
 	if host == "" {
 		return fmt.Errorf("%w: empty host", ErrBlocked)
 	}
@@ -206,7 +228,7 @@ func validateRequest(req *http.Request, opts Options, allowedHosts map[string]bo
 	// Otherwise resolve and check every returned IP. Dialer.Control re-checks
 	// at connect time — this is the defence-in-depth pass that gives clear
 	// errors instead of a generic dial failure.
-	ips, err := net.LookupIP(host)
+	ips, err := lookupIPAddr(req.Context(), host)
 	if err != nil {
 		return fmt.Errorf("%w: DNS lookup failed for %q: %v", ErrBlocked, host, err)
 	}
@@ -216,13 +238,13 @@ func validateRequest(req *http.Request, opts Options, allowedHosts map[string]bo
 	if opts.AllowPrivateRanges {
 		return nil
 	}
-	for _, raw := range ips {
-		addr, ok := netip.AddrFromSlice(raw)
+	for _, ip := range ips {
+		addr, ok := netip.AddrFromSlice(ip.IP)
 		if !ok {
 			return fmt.Errorf("%w: invalid resolved IP for %q", ErrBlocked, host)
 		}
-		if isBlockedIP(addr.Unmap(), allowedCIDRs) {
-			return fmt.Errorf("%w: %q resolved to disallowed IP %s", ErrBlocked, host, addr)
+		if isBlockedIP(addr, allowedCIDRs) {
+			return fmt.Errorf("%w: %q resolved to disallowed IP %s", ErrBlocked, host, addr.Unmap())
 		}
 	}
 	return nil
@@ -234,6 +256,12 @@ func WithContext(ctx context.Context, req *http.Request) *http.Request {
 	return req.WithContext(ctx)
 }
 
+// normalizeHost lowercases and strips the DNS root dot, so
+// "Metadata.Google.Internal." can't dodge a hostname comparison.
+func normalizeHost(h string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(h)), ".")
+}
+
 func hostExplicitlyAllowed(host string, allowed map[string]bool) bool {
 	if len(allowed) == 0 {
 		return false
@@ -243,7 +271,7 @@ func hostExplicitlyAllowed(host string, allowed map[string]bool) bool {
 
 func isMetadataHostname(host string) bool {
 	switch host {
-	case "metadata.google.internal", "metadata", "instance-data":
+	case "metadata.google.internal", "metadata.goog", "metadata", "instance-data":
 		return true
 	}
 	return false
@@ -269,28 +297,64 @@ func contains(list []string, want string) bool {
 }
 
 // blockedRanges enumerates the IP ranges that must never be the target of
-// outbound HTTP from server-side code. Covers loopback, link-local, CGNAT,
-// RFC1918 private, IPv6 ULA, AWS IMDS, and the AWS IPv6 link-local range.
+// outbound HTTP from server-side code.
 var blockedRanges = []netip.Prefix{
 	netip.MustParsePrefix("127.0.0.0/8"),
 	netip.MustParsePrefix("10.0.0.0/8"),
 	netip.MustParsePrefix("172.16.0.0/12"),
 	netip.MustParsePrefix("192.168.0.0/16"),
-	netip.MustParsePrefix("169.254.0.0/16"), // includes 169.254.169.254
-	netip.MustParsePrefix("100.64.0.0/10"),  // CGNAT
-	netip.MustParsePrefix("0.0.0.0/8"),
-	netip.MustParsePrefix("224.0.0.0/4"),
+	netip.MustParsePrefix("169.254.0.0/16"), // link-local, includes AWS/GCP/Azure metadata 169.254.169.254
+	netip.MustParsePrefix("100.64.0.0/10"),  // CGNAT, includes Alibaba metadata 100.100.100.200
+	netip.MustParsePrefix("0.0.0.0/8"),      // "this network" — 0.0.0.0 dials localhost on Linux
+	netip.MustParsePrefix("192.0.0.0/24"),   // IETF protocol assignments, includes Oracle Cloud metadata 192.0.0.192
+	netip.MustParsePrefix("198.18.0.0/15"),  // benchmarking, routed internally by some providers
+	netip.MustParsePrefix("224.0.0.0/4"),    // multicast
+	netip.MustParsePrefix("240.0.0.0/4"),    // reserved, includes 255.255.255.255 broadcast
+	netip.MustParsePrefix("::/128"),         // unspecified — like 0.0.0.0, dials localhost
 	netip.MustParsePrefix("::1/128"),
 	netip.MustParsePrefix("fe80::/10"),
-	netip.MustParsePrefix("fc00::/7"),
-	netip.MustParsePrefix("fd00:ec2::/32"),
+	netip.MustParsePrefix("fc00::/7"),       // ULA, includes AWS IPv6 metadata fd00:ec2::254
+	netip.MustParsePrefix("ff00::/8"),       // multicast
+	netip.MustParsePrefix("64:ff9b:1::/48"), // local-use NAT64 (RFC 8215) — operator-defined embedding
+	netip.MustParsePrefix("2001::/32"),      // Teredo — tunnels to an embedded IPv4 endpoint
+}
+
+var (
+	nat64WellKnown = netip.MustParsePrefix("64:ff9b::/96")
+	sixToFour      = netip.MustParsePrefix("2002::/16")
+)
+
+// embeddedIPv4 returns the IPv4 target a NAT64 (64:ff9b::/96) or 6to4
+// (2002::/16) address routes to. Neither prefix is denied outright — on an
+// IPv6-only host behind DNS64 every IPv4-only site resolves into
+// 64:ff9b::/96 — so the embedded address is checked against the IPv4
+// denylist instead: 64:ff9b::a9fe:a9fe is 169.254.169.254.
+func embeddedIPv4(addr netip.Addr) (netip.Addr, bool) {
+	b := addr.As16()
+	switch {
+	case nat64WellKnown.Contains(addr):
+		return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), true
+	case sixToFour.Contains(addr):
+		return netip.AddrFrom4([4]byte{b[2], b[3], b[4], b[5]}), true
+	}
+	return netip.Addr{}, false
 }
 
 func isBlockedIP(addr netip.Addr, allowedCIDRs []netip.Prefix) bool {
+	// Prefix.Contains never matches an address that carries an IPv6 zone,
+	// and an IPv4-mapped address never matches an IPv4 prefix — so without
+	// this "[fe80::1%25eth0]" and "[::ffff:127.0.0.1]" pass every range.
+	addr = addr.WithZone("").Unmap()
+	if !addr.IsValid() {
+		return true
+	}
 	for _, allowed := range allowedCIDRs {
 		if allowed.Contains(addr) {
 			return false
 		}
+	}
+	if v4, ok := embeddedIPv4(addr); ok {
+		return isBlockedIP(v4, allowedCIDRs)
 	}
 	for _, blocked := range blockedRanges {
 		if blocked.Contains(addr) {
