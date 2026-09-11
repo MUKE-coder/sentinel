@@ -264,6 +264,19 @@ func (s *Server) handleLogin(c *gin.Context) {
 		return
 	}
 
+	// The built-in password is published. Accept it only from this machine
+	// unless the operator opted in with AllowInsecureDefaults — otherwise a
+	// dashboard exposed with zero config is one guess away from admin.
+	if s.config.Dashboard.Password == sentinel.DefaultInsecurePassword &&
+		!s.config.Dashboard.AllowInsecureDefaults && !isLocalRequest(c.Request) {
+		s.auditLogin(c, req.Username, false)
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "The dashboard still uses the default password, which is accepted only from localhost. Set Dashboard.Password to log in from another machine.",
+			"code":  "DEFAULT_PASSWORD_REMOTE",
+		})
+		return
+	}
+
 	token, err := GenerateToken(s.config.Dashboard.SecretKey)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{

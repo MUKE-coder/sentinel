@@ -354,7 +354,7 @@ func (c *Config) ApplyDefaults() {
 		c.Dashboard.Password = DefaultInsecurePassword
 	}
 	if c.Dashboard.SecretKey == "" {
-		c.Dashboard.SecretKey = DefaultInsecureSecretKey
+		c.Dashboard.SecretKey = randomSecretKey()
 	}
 
 	if c.Storage.Driver == "" {

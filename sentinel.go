@@ -69,6 +69,9 @@ func Mount(router *gin.Engine, db *gorm.DB, config Config) {
 // handle the returned error themselves (log + skip Sentinel, retry, etc.).
 func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	storageExplicit := config.Storage.Driver != ""
+	// Validate the config as given: ValidateConfig applies defaults to its
+	// own copy and needs to see which fields the caller left unset.
+	issues := ValidateConfig(config)
 	config.ApplyDefaults()
 
 	// Passing a *gorm.DB strongly implies Sentinel will store its data there.
@@ -84,7 +87,7 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	// Findings are logged, never fatal: Mount still accepts everything it
 	// always accepted. Call sentinel.ValidateConfig yourself to gate a
 	// deploy on IssueError findings.
-	for _, issue := range ValidateConfig(config) {
+	for _, issue := range issues {
 		log.Printf("[sentinel] config %s", issue)
 	}
 
@@ -438,7 +441,7 @@ p { color: #8892a0; margin-bottom: 0.5rem; }
 <div class="container">
 <h1>SENTINEL</h1>
 <p>Security Dashboard</p>
-<p>Full React UI will be embedded in Task 1.14</p>
+<p>The dashboard UI is missing from this build. The REST API still works.</p>
 <div class="badge">API available at /sentinel/api/</div>
 </div>
 </body>

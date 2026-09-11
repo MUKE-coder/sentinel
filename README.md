@@ -272,7 +272,7 @@ db.WithContext(ctx).Create(&user)
 
 ## Dashboard
 
-The embedded React dashboard is served at `/sentinel/ui` (default credentials: admin/sentinel).
+The embedded React dashboard is served at `/sentinel/ui`. With no password configured, log in as admin/sentinel from the same machine. The default password is refused from anywhere else until you set `Dashboard.Password`.
 
 | Page | Description |
 |------|-------------|

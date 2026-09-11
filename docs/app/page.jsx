@@ -120,7 +120,7 @@ export default function Home() {
           },
           {
             question: 'Does Sentinel have a dashboard?',
-            answer: 'Yes. Sentinel includes an embedded React dashboard with 13 pages served at /sentinel/ui. It provides real-time WebSocket updates, security score visualization, threat analysis, WAF management, rate limit monitoring, analytics charts, AI insights, and compliance report generation. Default credentials are admin/sentinel.',
+            answer: 'Yes. Sentinel includes an embedded React dashboard with 13 pages served at /sentinel/ui. It provides real-time WebSocket updates, security score visualization, threat analysis, WAF management, rate limit monitoring, analytics charts, AI insights, and compliance report generation. With no password configured, admin/sentinel works from localhost only.',
           },
         ]}
       />

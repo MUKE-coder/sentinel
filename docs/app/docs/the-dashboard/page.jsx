@@ -30,7 +30,7 @@ export default function TheDashboard() {
           },
           {
             q: 'What are the default Sentinel dashboard credentials?',
-            a: 'The default username is "admin" and the default password is "sentinel". You should always change these in production by setting Username, Password, and SecretKey in your DashboardConfig. The SecretKey is used to sign JWT tokens for session authentication.',
+            a: 'The default username is "admin" and the default password is "sentinel". The default password is accepted only from localhost, meaning a direct connection with no proxy headers, unless you set AllowInsecureDefaults. Set Username, Password, and SecretKey in your DashboardConfig before you expose the dashboard. The SecretKey signs session tokens. If it is unset, a random one is generated at every start, so sessions end when the process restarts.',
           },
           {
             q: 'How many pages does the Sentinel dashboard have?',

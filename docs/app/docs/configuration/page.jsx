@@ -25,7 +25,7 @@ export default function Configuration() {
         questions={[
           {
             q: 'What is the default Sentinel configuration?',
-            a: 'With an empty sentinel.Config{}, Sentinel applies sensible defaults: SQLite storage at sentinel.db, the dashboard enabled at /sentinel/ui with admin/sentinel credentials, security headers active, and performance monitoring on. WAF, rate limiting, and anomaly detection are opt-in.',
+            a: 'With an empty sentinel.Config{}, Sentinel applies sensible defaults: SQLite storage at sentinel.db, the dashboard enabled at /sentinel/ui (log in as admin/sentinel from localhost only; the JWT secret is random per process), security headers active, and performance monitoring on. WAF, rate limiting, and anomaly detection are opt-in.',
           },
           {
             q: 'What storage backends does Sentinel support?',
@@ -289,7 +289,7 @@ func main() {
           <tr>
             <td><code>SecretKey</code></td>
             <td><code>string</code></td>
-            <td><code>sentinel-default-secret-change-me</code></td>
+            <td>Random, generated at each start</td>
             <td>Secret key used to sign JWT tokens for dashboard sessions.</td>
           </tr>
         </tbody>
@@ -1825,7 +1825,7 @@ UserExtractor: func(c *gin.Context) *sentinel.UserContext {
           <tr>
             <td>Dashboard</td>
             <td><code>SecretKey</code></td>
-            <td><code>sentinel-default-secret-change-me</code></td>
+            <td>Random, generated at each start</td>
           </tr>
           <tr>
             <td>Storage</td>
@@ -2023,7 +2023,8 @@ sentinel.Mount(r, nil, sentinel.Config{
         // Enabled:   true (default)
         // Prefix:    "/sentinel"
         // Username:  "admin"
-        // Password:  "sentinel"
+        // Password:  "sentinel" (accepted from localhost only)
+        // SecretKey: random, generated at each start
     },
     Storage: sentinel.StorageConfig{
         // Driver:        sentinel.SQLite

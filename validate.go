@@ -83,6 +83,9 @@ func ValidateRoutePattern(pattern string) error {
 // To assert that a concrete production path is actually covered by your
 // exclusion patterns, use ValidateRoutePattern / NewRouteMatcher directly.
 func ValidateConfig(config Config) []ConfigIssue {
+	// ApplyDefaults fills an unset SecretKey with a random one, so note
+	// whether it was set before that happens.
+	secretUnset := config.Dashboard.SecretKey == ""
 	config.ApplyDefaults()
 	var issues []ConfigIssue
 	report := func(sev IssueSeverity, field, format string, args ...any) {
@@ -127,11 +130,15 @@ func ValidateConfig(config Config) []ConfigIssue {
 	}
 	if config.Dashboard.Password == core.DefaultInsecurePassword {
 		report(IssueWarning, "Dashboard.Password",
-			"using the built-in default password — fine for local development; Mount refuses to start with it in release mode")
+			"using the built-in default password — the dashboard accepts it only from localhost unless AllowInsecureDefaults is set, and Mount refuses to start with it in release mode")
 	}
-	if config.Dashboard.SecretKey == core.DefaultInsecureSecretKey {
+	switch {
+	case secretUnset:
 		report(IssueWarning, "Dashboard.SecretKey",
-			"using the built-in default JWT secret — dashboard tokens are forgeable; Mount refuses to start with it in release mode")
+			"not set — a random secret is generated at every start, so dashboard sessions end on each restart and a token from one replica is rejected by the others; set at least 32 random bytes")
+	case config.Dashboard.SecretKey == core.DefaultInsecureSecretKey:
+		report(IssueWarning, "Dashboard.SecretKey",
+			"is the JWT secret published in Sentinel's source — anyone can forge dashboard tokens; Mount refuses to start with it in release mode")
 	}
 
 	// --- WAF ---
