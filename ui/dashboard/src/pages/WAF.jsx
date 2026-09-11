@@ -2,9 +2,30 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAPI } from '../hooks/useAPI';
 import SeverityBadge from '../components/SeverityBadge';
 
+const MODES = [
+  { value: 'log', label: 'Log', hint: 'Matching requests are recorded and let through.' },
+  { value: 'block', label: 'Block', hint: 'Matching requests are rejected with 403.' },
+  { value: 'challenge', label: 'Challenge', hint: 'Matching requests get 429 with Retry-After.' },
+];
+
+const LEVELS = ['off', 'low', 'medium', 'strict'];
+
+const CATEGORY_LABELS = {
+  SQLInjection: 'SQL injection',
+  XSS: 'Cross-site scripting',
+  PathTraversal: 'Path traversal',
+  CommandInjection: 'Command injection',
+  SSRF: 'SSRF',
+  XXE: 'XXE',
+  LFI: 'Local file inclusion',
+  OpenRedirect: 'Open redirect',
+};
+
 export default function WAF() {
   const { apiFetch } = useAPI();
   const [wafConfig, setWafConfig] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [configError, setConfigError] = useState('');
   const [customRules, setCustomRules] = useState([]);
   const [newRule, setNewRule] = useState({ id: '', name: '', pattern: '', applies_to: ['path', 'query', 'body'], severity: 'High', action: 'block', enabled: true });
   const [testPayload, setTestPayload] = useState('');
@@ -25,6 +46,21 @@ export default function WAF() {
   }, [apiFetch]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Mode and sensitivity changes take effect on the running WAF at once and
+  // last until the next restart.
+  const updateWAF = async (body) => {
+    setConfigError('');
+    setSaving(true);
+    try {
+      await apiFetch('/waf/rules', { method: 'PUT', body: JSON.stringify(body) });
+      await loadData();
+    } catch (err) {
+      setConfigError(err.message || 'Failed to update the WAF');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleAddRule = async () => {
     setRuleError('');
@@ -62,26 +98,76 @@ export default function WAF() {
     }
   };
 
+  const editable = wafConfig?.enabled && !saving;
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-[#e0e0e0]">WAF Configuration</h2>
 
-      {/* WAF Status */}
+      {/* Mode and per-category sensitivity */}
       {wafConfig && (
-        <div className="bg-[#0d1526] border border-[#1e2d4a] rounded-lg p-4">
-          <h3 className="text-sm uppercase tracking-wider text-[#8892a0] mb-3">Built-in Rules</h3>
-          <div className="flex items-center gap-4 mb-4">
-            <span className="text-[#8892a0] text-sm">Mode:</span>
-            <span className="text-[#00d4ff] font-medium">{wafConfig.mode || 'block'}</span>
+        <div className="bg-[#0d1526] border border-[#1e2d4a] rounded-lg p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm uppercase tracking-wider text-[#8892a0]">Built-in Rules</h3>
+            {saving && <span className="text-[#8892a0] text-xs">Saving…</span>}
           </div>
-          <div className="grid grid-cols-4 gap-3">
-            {wafConfig.rules && Object.entries(wafConfig.rules).map(([key, value]) => (
-              <div key={key} className="bg-[#0a0f1e] border border-[#1e2d4a] rounded p-2 text-xs">
-                <span className="text-[#8892a0]">{key}: </span>
-                <span className="text-[#e0e0e0]">{value || 'strict'}</span>
-              </div>
-            ))}
+
+          {!wafConfig.enabled && (
+            <p className="text-[#ffaa00] text-sm">
+              The WAF is not enabled (WAF.Enabled is false), so no request is inspected. Enable it in
+              your Sentinel config to change these settings.
+            </p>
+          )}
+
+          <div>
+            <p className="text-[#8892a0] text-xs mb-2">Mode</p>
+            <div className="flex flex-wrap gap-2">
+              {MODES.map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  disabled={!editable}
+                  onClick={() => m.value !== wafConfig.mode && updateWAF({ mode: m.value })}
+                  className={`px-3 py-1.5 rounded text-sm border transition-colors disabled:opacity-50 ${
+                    wafConfig.mode === m.value
+                      ? 'bg-[#00d4ff] text-[#0a0f1e] border-[#00d4ff] font-medium'
+                      : 'bg-[#0a0f1e] text-[#8892a0] border-[#1e2d4a] hover:text-[#e0e0e0]'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[#8892a0] text-xs mt-2">
+              {MODES.find((m) => m.value === wafConfig.mode)?.hint}
+            </p>
           </div>
+
+          <div>
+            <p className="text-[#8892a0] text-xs mb-2">Sensitivity</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {Object.entries(wafConfig.rules || {}).map(([key, value]) => (
+                <label key={key} className="bg-[#0a0f1e] border border-[#1e2d4a] rounded p-2 text-xs flex items-center justify-between gap-2">
+                  <span className="text-[#8892a0]">{CATEGORY_LABELS[key] || key}</span>
+                  <select
+                    value={value || 'strict'}
+                    disabled={!editable}
+                    onChange={(e) => updateWAF({ rules: { [key]: e.target.value } })}
+                    className="bg-[#0d1526] border border-[#1e2d4a] rounded px-2 py-1 text-[#e0e0e0] focus:border-[#00d4ff] focus:outline-none disabled:opacity-50"
+                  >
+                    {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <p className="text-[#8892a0] text-xs mt-2">
+              Low keeps only the most precise patterns, medium drops the noisiest, and strict runs
+              every pattern. Changes apply immediately and last until the next restart. To keep them,
+              set WAF.Mode and WAF.Rules in your config.
+            </p>
+          </div>
+
+          {configError && <p className="text-[#ff2d55] text-xs">{configError}</p>}
         </div>
       )}
 

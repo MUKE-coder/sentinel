@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { useAPI } from '../hooks/useAPI';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -16,7 +16,7 @@ export default function Dashboard() {
   const [threats, setThreats] = useState([]);
   const [score, setScore] = useState(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [statsRes, threatsRes, scoreRes] = await Promise.all([
         apiFetch('/analytics/summary?window=24h'),
@@ -29,14 +29,14 @@ export default function Dashboard() {
     } catch {
       // API may not have data yet
     }
-  };
+  }, [apiFetch]);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
   // Refresh when new threat arrives via WebSocket
   useEffect(() => {
     if (lastMessage?.type === 'threat') loadData();
-  }, [lastMessage]);
+  }, [lastMessage, loadData]);
 
   const threatColumns = [
     { key: 'ip', label: 'IP' },

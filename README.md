@@ -3,7 +3,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
-[![Release](https://img.shields.io/badge/Release-v2.3.1-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Release](https://img.shields.io/badge/Release-v2.4.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
 [![Tests](https://img.shields.io/badge/Tests-17%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
 [![Dashboard Pages](https://img.shields.io/badge/Dashboard-13%20pages-purple)](https://github.com/MUKE-coder/sentinel)
@@ -19,6 +19,22 @@ sentinel.Mount(r, nil, sentinel.Config{})
 r.Run(":8080")
 // Dashboard → http://localhost:8080/sentinel/ui
 ```
+
+## What's new in v2.4.0
+
+**Evidence and hardening: measured WAF accuracy, no published secrets, private AI prompts, and an audit log that can prove it wasn't edited.**
+
+- **Double-encoding WAF bypass fixed.** `%2527` got through because values were decoded only once. Leftover encoding in the path, parameters, and form bodies is now decoded, and every layer is scanned.
+- **WAF accuracy is measured and pinned in CI.** The corpus has 89 legitimate-but-suspicious requests and 56 attacks. With the default rules, the WAF has 10% false positives (was 38%) and detects 100% of attacks (was 92%). See [Measured Accuracy](https://sentinel-go-sdk.vercel.app/docs/waf#accuracy).
+- **No published dashboard secret.** An unset `SecretKey` is now random for each process. The default password works from localhost only, and WebSocket handshakes must be same-origin.
+- **AI redaction is on by default.** Query values, bodies, full IPs, and personal data are stripped before anything reaches the AI provider.
+- **Tamper-evident audit log.** Entries are hash-chained, with HMAC when `Storage.AuditKey` is set. `GET /api/audit-logs/verify` and the dashboard's Verify button find edits and deletions.
+- **Live IP reputation and blocklist feeds.** Attackers are checked against AbuseIPDB as they arrive. Spamhaus-style feeds block known-bad networks without an API key.
+- **Dashboard controls.**
+  - IP blocks now work with the WAF off.
+  - The dashboard can change the WAF mode and sensitivity, and set how long a block lasts.
+
+**Upgrading:** set `Dashboard.SecretKey`, or sessions end on every restart. Set `Dashboard.Password` if you reach the dashboard through Docker or a proxy. See the [upgrade checklist](https://sentinel-go-sdk.vercel.app/docs/whats-new-v2-4#upgrade).
 
 ## What's new in v2.3.1
 

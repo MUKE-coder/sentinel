@@ -17,6 +17,12 @@ export default function sitemap() {
       priority: 0.9,
     },
     {
+      url: `${baseUrl}/docs/whats-new-v2-4`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.9,
+    },
+    {
       url: `${baseUrl}/docs/whats-new-v2-3`,
       lastModified: new Date(),
       changeFrequency: 'monthly',
