@@ -2,6 +2,22 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.3.1] - 2026-09-11
+
+### 🔥 Fix
+
+- **The dashboard's compliance reports rendered blank.** The Reports page
+  read fields the API has never returned — a top-level `total_users`,
+  `auth_events_90d`, a PCI-DSS `requirements` map,
+  `monitoring_evidence.total_events`, `incident_response.avg_response_time`
+  — the same invented shapes the old docs described, so every figure showed
+  0 or nothing, on every version. It now renders the actual reports: summary
+  figures, per-user access, authentication events, incidents, audit entries,
+  blocked IPs, and anomalies, plus the v2.3.0 provenance block (storage
+  driver, durability, retention, oldest records, warnings) and any truncated
+  sections. A report refused on in-memory storage in release mode (409)
+  shows the reason and offers to generate it anyway.
+
 ## [2.3.0] - 2026-09-11
 
 Settings, dashboard controls, and report sections that silently did
