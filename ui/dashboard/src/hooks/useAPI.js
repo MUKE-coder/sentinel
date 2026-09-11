@@ -18,8 +18,13 @@ export function useAPI() {
       throw new Error('Session expired');
     }
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+      const body = await res.json().catch(() => ({ error: 'Request failed' }));
+      const err = new Error(body.error || `HTTP ${res.status}`);
+      // Callers that need to branch on a specific failure (e.g. the 409
+      // EPHEMERAL_STORAGE refusal on the Reports page) read these.
+      err.status = res.status;
+      err.code = body.code;
+      throw err;
     }
     return res.json();
   }, [token, logout]);
