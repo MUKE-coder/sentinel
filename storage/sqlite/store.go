@@ -149,6 +149,10 @@ type auditLogRow struct {
 	Success    bool      `gorm:"column:success"`
 	Error      string    `gorm:"column:error"`
 	RequestID  string    `gorm:"column:request_id"`
+	ChainID    string    `gorm:"index;column:chain_id"`
+	ChainSeq   int64     `gorm:"column:chain_seq"`
+	PrevHash   string    `gorm:"column:prev_hash"`
+	Hash       string    `gorm:"column:hash"`
 }
 
 func (auditLogRow) TableName() string { return "sentinel_audit_logs" }
@@ -1075,6 +1079,10 @@ func auditToRow(a *sentinel.AuditLog) auditLogRow {
 		Success:    a.Success,
 		Error:      a.Error,
 		RequestID:  a.RequestID,
+		ChainID:    a.ChainID,
+		ChainSeq:   a.ChainSeq,
+		PrevHash:   a.PrevHash,
+		Hash:       a.Hash,
 	}
 }
 
@@ -1099,6 +1107,10 @@ func rowToAudit(r *auditLogRow) *sentinel.AuditLog {
 		Success:    r.Success,
 		Error:      r.Error,
 		RequestID:  r.RequestID,
+		ChainID:    r.ChainID,
+		ChainSeq:   r.ChainSeq,
+		PrevHash:   r.PrevHash,
+		Hash:       r.Hash,
 	}
 }
 

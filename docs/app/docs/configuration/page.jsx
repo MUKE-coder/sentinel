@@ -373,6 +373,12 @@ Dashboard: sentinel.DashboardConfig{
             <td>Days to keep audit log entries. Separate from <code>RetentionDays</code> because audit history is evidence: PCI-DSS 10.5.1 requires 12 months. <code>ValidateConfig</code> warns below 365. (v2.3.0+)</td>
           </tr>
           <tr>
+            <td><code>AuditKey</code></td>
+            <td><code>string</code></td>
+            <td><code>""</code></td>
+            <td>HMAC key for the audit log's hash chain. Without it the chain is plain SHA-256; with it, rewriting entries undetectably requires the key. Keep it outside the database and stable. (v2.4.0+; see <a href="/docs/audit-logging#retention">Audit Logging</a>.)</td>
+          </tr>
+          <tr>
             <td><code>MaxOpenConns</code></td>
             <td><code>int</code></td>
             <td><code>10</code></td>

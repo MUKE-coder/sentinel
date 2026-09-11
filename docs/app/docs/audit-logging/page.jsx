@@ -664,6 +664,27 @@ func main() {
           list audit entries; there is no endpoint to change or remove one.
         </li>
         <li>
+          <strong>Verify on demand.</strong>
+          <CodeBlock
+            language="bash"
+            showLineNumbers={false}
+            code={`curl -s -H "Authorization: Bearer $TOKEN" \\
+  http://localhost:8080/sentinel/api/audit-logs/verify | jq .data
+
+# {
+#   "ok": false,
+#   "checked": 1842,
+#   "unchained": 0,
+#   "chains": 3,
+#   "keyed": true,
+#   "problems": [
+#     { "kind": "modified", "chain_id": "9b1e…", "seq": 212, "entry_id": "…",
+#       "detail": "content does not match the entry's hash" }
+#   ]
+# }`}
+          />
+        </li>
+        <li>
           <strong>Retention.</strong> Entries are deleted after{' '}
           <code>Storage.AuditRetentionDays</code> (default 365 — PCI-DSS 10.5.1 requires 12 months).
           This is separate from <code>RetentionDays</code> (default 90), which covers threats, user
@@ -671,10 +692,25 @@ func main() {
           else after 90 days.
         </li>
         <li>
-          <strong>Not tamper-evident.</strong> Entries live in the same database as the rest of
-          Sentinel's data, so anyone with direct write access to that database can alter them
-          undetectably. If you need evidentiary integrity, restrict database access and ship entries
-          to an append-only sink as well. A hash-chained audit log is planned.
+          <strong>Tamper-evident</strong> (v2.4.0+). Each entry is linked into a hash chain as it is
+          stored: it records its chain, its position, the previous entry's hash, and a hash over its
+          own content. <code>GET /sentinel/api/audit-logs/verify</code> recomputes every chain and
+          reports entries whose content changed, gaps where entries were deleted, and broken links.
+          Each process writes its own chain; losing the oldest entries to retention is not reported.
+        </li>
+        <li>
+          <strong>Set an <code>AuditKey</code>.</strong> Without one the chain is plain SHA-256: it
+          catches accidental damage and naive edits, but someone with database write access can
+          rewrite an entry and recompute everything after it. With{' '}
+          <code>Storage.AuditKey</code> the chain is an HMAC-SHA256, so that requires the key — keep
+          it in an env var or secrets manager, never in the database, and don't change it (entries
+          hashed under another key fail verification).
+        </li>
+        <li>
+          <strong>What it cannot see.</strong> Deleting the newest entries of a chain whose process
+          has since stopped leaves nothing that references them. Shipping entries to an external
+          append-only sink as well closes that gap. Entries written before v2.4.0 are reported as
+          unchained.
         </li>
       </ul>
 
