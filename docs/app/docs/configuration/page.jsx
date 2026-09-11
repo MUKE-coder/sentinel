@@ -1517,6 +1517,12 @@ Storage: sentinel.StorageConfig{
             <td><code>500</code></td>
             <td>Caps upstream LLM calls per UTC day across all AI features. Cached responses don't count. <code>0</code> disables the cap.</td>
           </tr>
+          <tr>
+            <td><code>Redaction</code></td>
+            <td><code>AIRedaction</code></td>
+            <td>redact everything</td>
+            <td>What is masked before data is sent to the provider: query-string values, request bodies, full IPs, and scrubbed personal data and secrets. Opt out per item with <code>SendPayloads</code>, <code>SendFullIPs</code>, <code>DisableScrubbing</code>. (v2.4.0+; see <a href="/docs/ai-analysis#redaction">AI Analysis</a>.)</td>
+          </tr>
         </tbody>
       </table>
 

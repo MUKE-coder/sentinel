@@ -165,6 +165,12 @@ export default function AIAnalysis() {
             <td>No</td>
             <td>Cap on upstream LLM calls per UTC day across all AI features (default 500; cached responses don't count; 0 disables the cap).</td>
           </tr>
+          <tr>
+            <td><code>Redaction</code></td>
+            <td><code>AIRedaction</code></td>
+            <td>No</td>
+            <td>What is masked before data is sent to the provider. The zero value is the most private — see <a href="#redaction">Redaction</a>.</td>
+          </tr>
         </tbody>
       </table>
 
@@ -270,10 +276,12 @@ const (
           total calls.
         </li>
         <li>
-          <strong>No redaction is applied.</strong> Query strings and body snippets are sent as
-          recorded. They are attacker-controlled, but they are recorded from requests to your
-          application and can contain your users' data — a login form body, a token in a query
-          string, an email address in a search.
+          <strong>Data is redacted before it is sent</strong> (v2.4.0+). Query strings and body
+          snippets are attacker-controlled, but they are recorded from requests to your application
+          and can contain your users' data — a login form body, a token in a query string, an email
+          address in a search. By default, query-string values are masked, bodies are dropped, IPs
+          are truncated, and personal data and secrets are scrubbed from every field below. See{' '}
+          <a href="#redaction">Redaction</a>.
         </li>
       </ul>
 
@@ -329,11 +337,73 @@ const (
         </tbody>
       </table>
 
-      <Callout type="warning" title="Privacy-conscious deployments">
-        If request bodies or query strings in your application can carry personal or payment data,
-        either leave <code>AI</code> unset or keep threat analysis, natural-language queries, and WAF
-        recommendations — the features that send payloads — out of your operators' workflow. The
-        daily summary sends aggregates only. Redaction options are planned.
+      <h3 id="redaction">Redaction</h3>
+      <p>
+        Every field in the table above passes through <code>AIConfig.Redaction</code> before the
+        request is built. The zero value is the most private setting:
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Default</th>
+            <th>Opt out with</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Query strings</td>
+            <td>Values masked, parameter names kept (<code>email=[redacted]&amp;q=[redacted]</code>)</td>
+            <td><code>SendPayloads: true</code></td>
+          </tr>
+          <tr>
+            <td>Request-body snippets</td>
+            <td>Dropped (<code>[omitted: 212 bytes]</code>)</td>
+            <td><code>SendPayloads: true</code></td>
+          </tr>
+          <tr>
+            <td>Client IPs and cities</td>
+            <td>IPv4 loses its last octet (<code>203.0.113.x</code>), IPv6 is cut to its /48; cities dropped</td>
+            <td><code>SendFullIPs: true</code></td>
+          </tr>
+          <tr>
+            <td>Every text field — paths, User-Agents, matched evidence, and payloads you opt into</td>
+            <td>Emails, JWTs, bearer tokens, Luhn-valid card numbers, <code>password=</code> / <code>api_key=</code>-style values, and long hex or base64 strings replaced with placeholders</td>
+            <td><code>DisableScrubbing: true</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        The attack fragments the WAF matched (for example <code>UNION SELECT password FROM users</code>)
+        are kept after scrubbing, so an analysis still sees the payload that triggered the detection,
+        and WAF recommendations are built from them. Redaction runs directly around the network call
+        and never changes what Sentinel stores.
+      </p>
+
+      <CodeBlock
+        language="go"
+        code={`AI: &sentinel.AIConfig{
+    Provider: sentinel.Claude,
+    APIKey:   os.Getenv("ANTHROPIC_API_KEY"),
+
+    // Defaults shown — the most private setting. Only opt out if you have
+    // decided your provider may see your users' request data.
+    Redaction: sentinel.AIRedaction{
+        SendPayloads:     false,
+        SendFullIPs:      false,
+        DisableScrubbing: false,
+    },
+},`}
+      />
+
+      <Callout type="warning" title="Scrubbing is best-effort">
+        Pattern-based scrubbing catches common personal data and secrets, not all of it — a name, a
+        street address, or an unusual token format passes through. With <code>SendPayloads</code>{' '}
+        off, bodies never leave the process and query values are masked, which is the dependable
+        protection. If that is still too much for your data, leave <code>AI</code> unset; the daily
+        summary sends aggregate counts only.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
