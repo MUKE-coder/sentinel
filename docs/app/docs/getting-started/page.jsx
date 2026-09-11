@@ -41,7 +41,7 @@ export default function GettingStarted() {
           },
           {
             q: 'What is the default Sentinel dashboard URL?',
-            a: 'The default dashboard is served at /sentinel/ui with default credentials admin/sentinel. You can customize the URL prefix, username, password, and JWT secret key through the DashboardConfig section of your configuration struct.',
+            a: 'The dashboard is served at /sentinel/ui. With no password set, the login is admin/sentinel, and it only works from the same machine. Before you expose the dashboard, set Dashboard.Password, and set SecretKey too so sessions survive restarts. You can customize the URL prefix, username, password, and JWT secret key through the DashboardConfig section of your configuration struct.',
           },
         ]}
       />
@@ -98,7 +98,7 @@ func main() {
 
     r.Run(":8080")
     // Dashboard: http://localhost:8080/sentinel/ui
-    // Default login: admin / sentinel
+    // Default login, from this machine only: admin / sentinel
 }`}
       />
 

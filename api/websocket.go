@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/MUKE-coder/sentinel/v2/pipeline"
@@ -12,10 +14,32 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for embedded dashboard
-	},
+// upgrader accepts browser handshakes only from the dashboard's own origin.
+// Before v2.4.0 every origin was accepted, so a page on any site could open
+// the live threat stream with a token it held.
+var upgrader = websocket.Upgrader{CheckOrigin: sameOrigin}
+
+// sameOrigin accepts a WebSocket handshake whose Origin matches the host the
+// browser connected to: the Host header, or X-Forwarded-Host where a reverse
+// proxy rewrote Host. A browser can't set either header on a WebSocket
+// handshake, so a page on another site can't pass. Clients that send no
+// Origin aren't browsers and are accepted — they still need a valid token.
+func sameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	forwarded, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Host"), ",")
+	for _, host := range []string{r.Host, strings.TrimSpace(forwarded)} {
+		if host != "" && strings.EqualFold(u.Host, host) {
+			return true
+		}
+	}
+	return false
 }
 
 // WSClient represents a connected WebSocket client.

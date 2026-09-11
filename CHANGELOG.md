@@ -75,6 +75,18 @@ All notable changes to Sentinel are documented here.
 
 ### 🔥 Fix
 
+- **Zero-config dashboards signed tokens with a published secret.** An
+  unset `Dashboard.SecretKey` defaulted to
+  `sentinel-default-secret-change-me`. Outside release mode, anyone could
+  forge an admin token for such a dashboard. The default is now a random
+  256-bit secret generated at each start.
+- **The default password worked from anywhere outside release mode.** The
+  `admin`/`sentinel` login is now accepted only from a direct loopback
+  connection with no forwarding headers, unless `AllowInsecureDefaults` is
+  set. Every other client gets 403 `DEFAULT_PASSWORD_REMOTE`.
+- **The WebSocket streams accepted any Origin.** A browser handshake must
+  now come from the dashboard's own origin: the `Host` header, or
+  `X-Forwarded-Host` behind a proxy that rewrites `Host`.
 - **Double encoding bypassed the WAF.** The classifier decoded query values
   once, as the router does. So `%2527` reached an app that decodes again as
   an apostrophe, while the WAF only saw `%27`. Any percent-encoding left in
@@ -100,6 +112,15 @@ All notable changes to Sentinel are documented here.
 
 ### Behavior changes
 
+- **Dashboard sessions end when the process restarts** unless
+  `Dashboard.SecretKey` is set. With several replicas, set it, or a token
+  issued by one replica is rejected by the others.
+- **The default password needs a local connection.** In Docker, a published
+  port reaches Sentinel from the bridge address, not loopback. Behind a
+  proxy, forwarding headers are present. In both cases, set
+  `Dashboard.Password`, or set `AllowInsecureDefaults` for a development
+  container.
+- The unused, empty `api/handlers` package was removed.
 - AI features see redacted data by default, so analyses no longer quote
   full query strings or request bodies. Set
   `AI.Redaction.SendPayloads: true` (and `SendFullIPs: true`) for the
