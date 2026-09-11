@@ -19,6 +19,22 @@ func NewGenerator(store storage.Store) *Generator {
 	return &Generator{store: store}
 }
 
+// noteTruncated records a report section whose listing hit its row cap.
+// Report sections are evidence, and a silently short list reads as "that is
+// everything" — so the report says which lists are partial. Summary counts
+// come from totals, not list lengths, and stay exact.
+func noteTruncated(sections *[]string, section string, total int64, listed int) {
+	if total <= int64(listed) {
+		return
+	}
+	for _, s := range *sections {
+		if s == section {
+			return
+		}
+	}
+	*sections = append(*sections, section)
+}
+
 // --- GDPR Report ---
 
 // GDPRReport is a GDPR compliance report.
@@ -31,14 +47,18 @@ type GDPRReport struct {
 	DataDeletions  []*sentinel.AuditLog    `json:"data_deletions"`
 	UnusualAccess  []*sentinel.ThreatEvent `json:"unusual_access"`
 	Summary        GDPRSummary             `json:"summary"`
+
+	// Truncated names the sections whose listing hit its row cap and is not
+	// the complete record.
+	Truncated []string `json:"truncated,omitempty"`
 }
 
 // GDPRUserAccess summarizes data access for a single user.
 type GDPRUserAccess struct {
-	UserID        string   `json:"user_id"`
-	RoutesAccessed []string `json:"routes_accessed"`
-	AccessCount   int      `json:"access_count"`
-	LastAccess    time.Time `json:"last_access"`
+	UserID         string    `json:"user_id"`
+	RoutesAccessed []string  `json:"routes_accessed"`
+	AccessCount    int       `json:"access_count"`
+	LastAccess     time.Time `json:"last_access"`
 }
 
 // GDPRSummary contains aggregate GDPR metrics.
@@ -68,7 +88,7 @@ func (g *Generator) GenerateGDPR(ctx context.Context, window time.Duration) (*GD
 	}
 
 	for _, user := range users {
-		activities, _, err := g.store.ListUserActivity(ctx, user.UserID, sentinel.ActivityFilter{
+		activities, total, err := g.store.ListUserActivity(ctx, user.UserID, sentinel.ActivityFilter{
 			StartTime: &start,
 			EndTime:   &now,
 			Page:      1,
@@ -81,6 +101,7 @@ func (g *Generator) GenerateGDPR(ctx context.Context, window time.Duration) (*GD
 		if len(activities) == 0 {
 			continue
 		}
+		noteTruncated(&report.Truncated, "user_data_access", total, len(activities))
 
 		routeSet := make(map[string]bool)
 		var lastAccess time.Time
@@ -98,13 +119,14 @@ func (g *Generator) GenerateGDPR(ctx context.Context, window time.Duration) (*GD
 		report.UserDataAccess = append(report.UserDataAccess, GDPRUserAccess{
 			UserID:         user.UserID,
 			RoutesAccessed: routes,
-			AccessCount:    len(activities),
+			AccessCount:    max(int(total), len(activities)),
 			LastAccess:     lastAccess,
 		})
 	}
 
 	// Data export audit logs (READ actions could be exports)
-	exports, _, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{
+	var exportsTotal, deletionsTotal, unusualTotal int64
+	exports, total, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{
 		Action:    "READ",
 		StartTime: &start,
 		EndTime:   &now,
@@ -113,10 +135,12 @@ func (g *Generator) GenerateGDPR(ctx context.Context, window time.Duration) (*GD
 	})
 	if err == nil {
 		report.DataExports = exports
+		exportsTotal = total
+		noteTruncated(&report.Truncated, "data_exports", total, len(exports))
 	}
 
 	// Data deletion audit logs
-	deletions, _, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{
+	deletions, total, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{
 		Action:    "DELETE",
 		StartTime: &start,
 		EndTime:   &now,
@@ -125,11 +149,13 @@ func (g *Generator) GenerateGDPR(ctx context.Context, window time.Duration) (*GD
 	})
 	if err == nil {
 		report.DataDeletions = deletions
+		deletionsTotal = total
+		noteTruncated(&report.Truncated, "data_deletions", total, len(deletions))
 	}
 
 	// Unusual access (anomaly-related threats)
-	unusualThreats, _, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
-		Type:      "AnomalyDetected",
+	unusualThreats, total, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
+		Type:      string(sentinel.ThreatAnomalyDetected),
 		StartTime: &start,
 		EndTime:   &now,
 		Page:      1,
@@ -137,14 +163,16 @@ func (g *Generator) GenerateGDPR(ctx context.Context, window time.Duration) (*GD
 	})
 	if err == nil {
 		report.UnusualAccess = unusualThreats
+		unusualTotal = total
+		noteTruncated(&report.Truncated, "unusual_access", total, len(unusualThreats))
 	}
 
 	report.Summary = GDPRSummary{
 		TotalUsers:         len(report.UserDataAccess),
 		TotalDataAccesses:  sumUserAccess(report.UserDataAccess),
-		TotalExports:       len(report.DataExports),
-		TotalDeletions:     len(report.DataDeletions),
-		UnusualAccessCount: len(report.UnusualAccess),
+		TotalExports:       int(exportsTotal),
+		TotalDeletions:     int(deletionsTotal),
+		UnusualAccessCount: int(unusualTotal),
 	}
 
 	return report, nil
@@ -152,43 +180,50 @@ func (g *Generator) GenerateGDPR(ctx context.Context, window time.Duration) (*GD
 
 // --- PCI-DSS Report ---
 
+// pciWindow is the look-back window of the PCI-DSS report.
+const pciWindow = 90 * 24 * time.Hour
+
 // PCIDSSReport is a PCI-DSS compliance report.
 type PCIDSSReport struct {
-	GeneratedAt        time.Time               `json:"generated_at"`
-	AuthEvents         PCIAuthEvents           `json:"auth_events"`
-	SecurityIncidents  []*sentinel.ThreatEvent `json:"security_incidents"`
-	BlockedThreats     []*sentinel.ThreatEvent `json:"blocked_threats"`
-	Summary            PCIDSSSummary           `json:"summary"`
+	GeneratedAt       time.Time               `json:"generated_at"`
+	AuthEvents        PCIAuthEvents           `json:"auth_events"`
+	SecurityIncidents []*sentinel.ThreatEvent `json:"security_incidents"`
+	BlockedThreats    []*sentinel.ThreatEvent `json:"blocked_threats"`
+	Summary           PCIDSSSummary           `json:"summary"`
+
+	// Truncated names the sections whose listing hit its row cap and is not
+	// the complete record.
+	Truncated []string `json:"truncated,omitempty"`
 }
 
 // PCIAuthEvents contains authentication event metrics.
 type PCIAuthEvents struct {
-	TotalAttempts int `json:"total_attempts"`
-	SuccessCount  int `json:"success_count"`
-	FailureCount  int `json:"failure_count"`
+	TotalAttempts int     `json:"total_attempts"`
+	SuccessCount  int     `json:"success_count"`
+	FailureCount  int     `json:"failure_count"`
 	FailureRate   float64 `json:"failure_rate"`
 }
 
 // PCIDSSSummary contains aggregate PCI-DSS metrics.
 type PCIDSSSummary struct {
-	TotalIncidents     int `json:"total_incidents"`
-	CriticalIncidents  int `json:"critical_incidents"`
-	HighIncidents      int `json:"high_incidents"`
-	BlockedCount       int `json:"blocked_count"`
-	UniqueAttackerIPs  int `json:"unique_attacker_ips"`
+	TotalIncidents    int `json:"total_incidents"`
+	CriticalIncidents int `json:"critical_incidents"`
+	HighIncidents     int `json:"high_incidents"`
+	BlockedCount      int `json:"blocked_count"`
+	UniqueAttackerIPs int `json:"unique_attacker_ips"`
 }
 
 // GeneratePCIDSS produces a PCI-DSS compliance report for the last 90 days.
 func (g *Generator) GeneratePCIDSS(ctx context.Context) (*PCIDSSReport, error) {
 	now := time.Now()
-	start := now.Add(-90 * 24 * time.Hour)
+	start := now.Add(-pciWindow)
 
 	report := &PCIDSSReport{
 		GeneratedAt: now,
 	}
 
 	// Authentication events from audit logs
-	authLogs, _, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{
+	authLogs, total, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{
 		Resource:  "auth",
 		StartTime: &start,
 		EndTime:   &now,
@@ -196,6 +231,7 @@ func (g *Generator) GeneratePCIDSS(ctx context.Context) (*PCIDSSReport, error) {
 		PageSize:  5000,
 	})
 	if err == nil {
+		noteTruncated(&report.Truncated, "auth_events", total, len(authLogs))
 		successCount := 0
 		failureCount := 0
 		for _, al := range authLogs {
@@ -219,7 +255,7 @@ func (g *Generator) GeneratePCIDSS(ctx context.Context) (*PCIDSSReport, error) {
 	}
 
 	// Security incidents (all threats in 90 days)
-	incidents, _, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
+	incidents, total, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
 		StartTime: &start,
 		EndTime:   &now,
 		Page:      1,
@@ -229,27 +265,52 @@ func (g *Generator) GeneratePCIDSS(ctx context.Context) (*PCIDSSReport, error) {
 	})
 	if err == nil {
 		report.SecurityIncidents = incidents
+		noteTruncated(&report.Truncated, "security_incidents", total, len(incidents))
 	}
 
-	// Blocked threats
+	// Blocked threats. Before v2.2.2 this filtered on Resolved, so it listed
+	// threats an operator had triaged rather than threats the WAF stopped.
 	blocked := true
-	blockedThreats, _, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
+	blockedThreats, total, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
 		StartTime: &start,
 		EndTime:   &now,
-		Resolved:  &blocked,
+		Blocked:   &blocked,
 		Page:      1,
 		PageSize:  5000,
+		SortBy:    "timestamp",
+		SortOrder: "desc",
 	})
 	if err == nil {
 		report.BlockedThreats = blockedThreats
+		noteTruncated(&report.Truncated, "blocked_threats", total, len(blockedThreats))
 	}
 
-	// Compute summary
+	// Summary counts come from the store's aggregate query so they stay
+	// exact when the incident listing above is truncated.
+	if stats, err := g.store.GetThreatStats(ctx, pciWindow); err == nil && stats != nil {
+		report.Summary = PCIDSSSummary{
+			TotalIncidents:    int(stats.TotalThreats),
+			CriticalIncidents: int(stats.CriticalCount),
+			HighIncidents:     int(stats.HighCount),
+			BlockedCount:      int(stats.BlockedCount),
+			UniqueAttackerIPs: int(stats.UniqueIPs),
+		}
+	} else {
+		report.Summary = summarizeIncidents(report.SecurityIncidents)
+	}
+
+	return report, nil
+}
+
+// summarizeIncidents computes PCI-DSS summary counts from a threat listing.
+// Only a fallback for when the aggregate stats query fails — it undercounts
+// if the listing was truncated.
+func summarizeIncidents(incidents []*sentinel.ThreatEvent) PCIDSSSummary {
 	critCount := 0
 	highCount := 0
 	blockedCount := 0
 	ipSet := make(map[string]bool)
-	for _, t := range report.SecurityIncidents {
+	for _, t := range incidents {
 		if t.Severity == sentinel.SeverityCritical {
 			critCount++
 		}
@@ -261,44 +322,48 @@ func (g *Generator) GeneratePCIDSS(ctx context.Context) (*PCIDSSReport, error) {
 		}
 		ipSet[t.IP] = true
 	}
-
-	report.Summary = PCIDSSSummary{
-		TotalIncidents:    len(report.SecurityIncidents),
+	return PCIDSSSummary{
+		TotalIncidents:    len(incidents),
 		CriticalIncidents: critCount,
 		HighIncidents:     highCount,
 		BlockedCount:      blockedCount,
 		UniqueAttackerIPs: len(ipSet),
 	}
-
-	return report, nil
 }
 
 // --- SOC2 Report ---
 
 // SOC2Report is a SOC2 compliance report.
 type SOC2Report struct {
-	GeneratedAt       time.Time               `json:"generated_at"`
-	WindowStart       time.Time               `json:"window_start"`
-	WindowEnd         time.Time               `json:"window_end"`
+	GeneratedAt        time.Time               `json:"generated_at"`
+	WindowStart        time.Time               `json:"window_start"`
+	WindowEnd          time.Time               `json:"window_end"`
 	MonitoringEvidence SOC2Monitoring          `json:"monitoring_evidence"`
-	IncidentResponse  []*sentinel.ThreatEvent `json:"incident_response"`
-	AccessControl     SOC2AccessControl       `json:"access_control"`
-	AnomalyEvents     []*sentinel.ThreatEvent `json:"anomaly_events"`
-	Summary           SOC2Summary             `json:"summary"`
+	IncidentResponse   []*sentinel.ThreatEvent `json:"incident_response"`
+	AccessControl      SOC2AccessControl       `json:"access_control"`
+	AnomalyEvents      []*sentinel.ThreatEvent `json:"anomaly_events"`
+	Summary            SOC2Summary             `json:"summary"`
+
+	// Truncated names the sections whose listing hit its row cap and is not
+	// the complete record.
+	Truncated []string `json:"truncated,omitempty"`
 }
 
 // SOC2Monitoring contains security monitoring evidence.
 type SOC2Monitoring struct {
-	TotalEventsProcessed int64              `json:"total_events_processed"`
-	ThreatStats          *sentinel.ThreatStats `json:"threat_stats"`
+	// TotalEventsProcessed is the number of threat events recorded in the
+	// window. (Before v2.2.2 it was threats + blocked + unique IPs, a sum
+	// that counted each blocked threat twice and measured nothing.)
+	TotalEventsProcessed int64                   `json:"total_events_processed"`
+	ThreatStats          *sentinel.ThreatStats   `json:"threat_stats"`
 	SecurityScore        *sentinel.SecurityScore `json:"security_score"`
 }
 
 // SOC2AccessControl contains access control evidence.
 type SOC2AccessControl struct {
-	TotalUsers    int                    `json:"total_users"`
-	AuditLogs     []*sentinel.AuditLog   `json:"audit_logs"`
-	BlockedIPs    []*sentinel.BlockedIP  `json:"blocked_ips"`
+	TotalUsers int                   `json:"total_users"`
+	AuditLogs  []*sentinel.AuditLog  `json:"audit_logs"`
+	BlockedIPs []*sentinel.BlockedIP `json:"blocked_ips"`
 }
 
 // SOC2Summary contains aggregate SOC2 metrics.
@@ -322,13 +387,11 @@ func (g *Generator) GenerateSOC2(ctx context.Context, window time.Duration) (*SO
 	}
 
 	// Monitoring evidence
-	stats, err := g.store.GetThreatStats(ctx, window)
-	if err == nil {
+	var stats *sentinel.ThreatStats
+	if s, err := g.store.GetThreatStats(ctx, window); err == nil && s != nil {
+		stats = s
 		report.MonitoringEvidence.ThreatStats = stats
-		if stats != nil {
-			report.MonitoringEvidence.TotalEventsProcessed = stats.TotalThreats +
-				stats.BlockedCount + stats.UniqueIPs
-		}
+		report.MonitoringEvidence.TotalEventsProcessed = stats.TotalThreats
 	}
 
 	score, err := g.store.GetSecurityScore(ctx)
@@ -338,7 +401,7 @@ func (g *Generator) GenerateSOC2(ctx context.Context, window time.Duration) (*SO
 
 	// Incident response — resolved threats
 	resolved := true
-	incidents, _, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
+	incidents, total, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
 		StartTime: &start,
 		EndTime:   &now,
 		Resolved:  &resolved,
@@ -349,6 +412,7 @@ func (g *Generator) GenerateSOC2(ctx context.Context, window time.Duration) (*SO
 	})
 	if err == nil {
 		report.IncidentResponse = incidents
+		noteTruncated(&report.Truncated, "incident_response", total, len(incidents))
 	}
 
 	// Access control
@@ -357,7 +421,8 @@ func (g *Generator) GenerateSOC2(ctx context.Context, window time.Duration) (*SO
 		report.AccessControl.TotalUsers = len(users)
 	}
 
-	auditLogs, _, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{
+	var auditTotal, anomalyTotal int64
+	auditLogs, total, err := g.store.ListAuditLogs(ctx, sentinel.AuditFilter{
 		StartTime: &start,
 		EndTime:   &now,
 		Page:      1,
@@ -365,6 +430,8 @@ func (g *Generator) GenerateSOC2(ctx context.Context, window time.Duration) (*SO
 	})
 	if err == nil {
 		report.AccessControl.AuditLogs = auditLogs
+		auditTotal = total
+		noteTruncated(&report.Truncated, "access_control.audit_logs", total, len(auditLogs))
 	}
 
 	blockedIPs, err := g.store.ListBlockedIPs(ctx)
@@ -373,8 +440,8 @@ func (g *Generator) GenerateSOC2(ctx context.Context, window time.Duration) (*SO
 	}
 
 	// Anomaly events
-	anomalies, _, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
-		Type:      "AnomalyDetected",
+	anomalies, total, err := g.store.ListThreats(ctx, sentinel.ThreatFilter{
+		Type:      string(sentinel.ThreatAnomalyDetected),
 		StartTime: &start,
 		EndTime:   &now,
 		Page:      1,
@@ -382,28 +449,21 @@ func (g *Generator) GenerateSOC2(ctx context.Context, window time.Duration) (*SO
 	})
 	if err == nil {
 		report.AnomalyEvents = anomalies
+		anomalyTotal = total
+		noteTruncated(&report.Truncated, "anomaly_events", total, len(anomalies))
 	}
 
-	// Summary
-	allThreats, _, _ := g.store.ListThreats(ctx, sentinel.ThreatFilter{
-		StartTime: &start,
-		EndTime:   &now,
-		Page:      1,
-		PageSize:  1,
-	})
-	blockedCount := 0
-	for _, t := range allThreats {
-		if t.Blocked {
-			blockedCount++
-		}
-	}
-
+	// Summary. Threat counts come from the aggregate stats query: before
+	// v2.2.2 "detected" counted only resolved threats and "blocked" was
+	// counted from a one-row page, so it could never exceed 1.
 	report.Summary = SOC2Summary{
-		TotalThreatsDetected: len(report.IncidentResponse),
-		TotalThreatsBlocked:  blockedCount,
-		TotalAnomalies:       len(report.AnomalyEvents),
-		TotalAuditEntries:    len(report.AccessControl.AuditLogs),
-		ActiveBlockedIPs:     len(report.AccessControl.BlockedIPs),
+		TotalAnomalies:    int(anomalyTotal),
+		TotalAuditEntries: int(auditTotal),
+		ActiveBlockedIPs:  len(report.AccessControl.BlockedIPs),
+	}
+	if stats != nil {
+		report.Summary.TotalThreatsDetected = int(stats.TotalThreats)
+		report.Summary.TotalThreatsBlocked = int(stats.BlockedCount)
 	}
 
 	return report, nil

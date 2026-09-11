@@ -752,6 +752,9 @@ func matchesThreatFilter(t *sentinel.ThreatEvent, f sentinel.ThreatFilter) bool 
 	if f.Resolved != nil && t.Resolved != *f.Resolved {
 		return false
 	}
+	if f.Blocked != nil && t.Blocked != *f.Blocked {
+		return false
+	}
 	if f.Search != "" {
 		search := strings.ToLower(f.Search)
 		if !strings.Contains(strings.ToLower(t.Path), search) &&

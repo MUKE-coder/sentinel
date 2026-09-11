@@ -222,6 +222,17 @@ func (s *Store) GetThreat(ctx context.Context, id string) (*sentinel.ThreatEvent
 }
 
 // ListThreats returns a paginated, filtered list of threat events.
+// threatSortColumns allowlists ThreatFilter.SortBy. The value reaches ORDER BY
+// verbatim — identifiers can't be bound as parameters — and the dashboard
+// API passes its sort_by query parameter straight through, so anything not
+// listed here must never be interpolated.
+var threatSortColumns = map[string]bool{
+	"timestamp": true,
+	"severity":  true,
+	"ip":        true,
+	"path":      true,
+}
+
 func (s *Store) ListThreats(ctx context.Context, filter sentinel.ThreatFilter) ([]*sentinel.ThreatEvent, int64, error) {
 	if filter.PageSize <= 0 {
 		filter.PageSize = 20
@@ -250,6 +261,9 @@ func (s *Store) ListThreats(ctx context.Context, filter sentinel.ThreatFilter) (
 	if filter.Resolved != nil {
 		query = query.Where("resolved = ?", *filter.Resolved)
 	}
+	if filter.Blocked != nil {
+		query = query.Where("blocked = ?", *filter.Blocked)
+	}
 	if filter.Search != "" {
 		search := "%" + filter.Search + "%"
 		query = query.Where("path LIKE ? OR ip LIKE ? OR user_agent LIKE ?", search, search, search)
@@ -259,7 +273,7 @@ func (s *Store) ListThreats(ctx context.Context, filter sentinel.ThreatFilter) (
 	query.Count(&total)
 
 	sortBy := "timestamp"
-	if filter.SortBy != "" {
+	if threatSortColumns[filter.SortBy] {
 		sortBy = filter.SortBy
 	}
 	sortOrder := "DESC"

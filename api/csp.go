@@ -87,7 +87,9 @@ func (s *Server) registerCSPReport(r *gin.Engine, prefix string) {
 
 func (s *Server) handleCSPReport(limiter *cspReportLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := c.ClientIP()
+		// Not c.ClientIP(): that trusts X-Forwarded-For from anyone, and a
+		// per-IP limit the sender picks the key for limits nothing.
+		ip := middleware.ClientIP(c)
 		if !limiter.allow(ip) {
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"error": "rate limit exceeded for CSP reports",

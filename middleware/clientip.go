@@ -56,6 +56,9 @@ func isTrustedProxy(ip string) bool {
 	if err != nil {
 		return false
 	}
+	// A dual-stack listener can report an IPv4 peer as ::ffff:a.b.c.d, and
+	// Prefix.Contains never matches a mapped address against an IPv4 prefix.
+	addr = addr.WithZone("").Unmap()
 	for _, p := range trustedProxies {
 		if p.Contains(addr) {
 			return true
@@ -70,6 +73,14 @@ func isTrustedProxy(ip string) bool {
 // limits, threat attribution) is keying on the proxy's address, not the
 // client's (issue #8).
 var proxyHeaderWarnOnce sync.Once
+
+// ClientIP returns the request's client IP under the same trusted-proxy rules
+// every Sentinel middleware uses. Prefer it to gin's c.ClientIP(), which —
+// unless the engine's SetTrustedProxies has been configured — believes
+// X-Forwarded-For from any peer, so any client can pick its own address.
+func ClientIP(c *gin.Context) string {
+	return extractClientIP(c)
+}
 
 // extractClientIP returns the client IP from the request. Proxy headers
 // (X-Forwarded-For, X-Real-IP) are honored only when the direct connection
@@ -88,17 +99,17 @@ func extractClientIP(c *gin.Context) string {
 	}
 
 	if isTrustedProxy(directIP) {
-		if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-			parts := strings.SplitN(xff, ",", 2)
-			candidate := strings.TrimSpace(parts[0])
-			if net.ParseIP(candidate) != nil {
-				return candidate
+		if xff := c.Request.Header.Values("X-Forwarded-For"); len(xff) > 0 {
+			if ip := clientFromForwardedFor(xff); ip != "" {
+				return ip
 			}
+			// The header is present but yields no address — garbage the
+			// proxy passed through. Fall back to the proxy itself rather
+			// than X-Real-IP, which the client may also have set.
+			return directIP
 		}
-		if xri := strings.TrimSpace(c.GetHeader("X-Real-IP")); xri != "" {
-			if net.ParseIP(xri) != nil {
-				return xri
-			}
+		if ip := parseForwardedHop(c.GetHeader("X-Real-IP")); ip != "" {
+			return ip
 		}
 	}
 
@@ -106,6 +117,56 @@ func extractClientIP(c *gin.Context) string {
 		return directIP
 	}
 	return c.ClientIP()
+}
+
+// clientFromForwardedFor picks the client address out of X-Forwarded-For.
+// Each proxy appends the address of the peer it received the request from,
+// so only the right-hand end of the chain is trustworthy: everything left of
+// the first hop we don't trust was written by the client and can say
+// anything. Walk right to left, skip our own trusted proxies, and return the
+// first address that isn't one. If every entry is a trusted proxy, the
+// furthest one is the best answer available.
+//
+// values holds every X-Forwarded-For header line in order — a proxy may add
+// its own line rather than extend the client's, and reading only the first
+// line would hand the choice back to the client.
+func clientFromForwardedFor(values []string) string {
+	var hops []string
+	for _, v := range values {
+		hops = append(hops, strings.Split(v, ",")...)
+	}
+	furthestTrusted := ""
+	for i := len(hops) - 1; i >= 0; i-- {
+		ip := parseForwardedHop(hops[i])
+		if ip == "" {
+			// A proxy always writes a real peer address, so an unparseable
+			// entry came from the client side: nothing at or left of it can
+			// be believed.
+			break
+		}
+		if !isTrustedProxy(ip) {
+			return ip
+		}
+		furthestTrusted = ip
+	}
+	return furthestTrusted
+}
+
+// parseForwardedHop normalises one forwarded-for entry to a bare IP, or ""
+// if it isn't one. Some proxies (Azure Application Gateway, IIS ARR) append
+// "ip:port", so that form is accepted too.
+func parseForwardedHop(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if addr, err := netip.ParseAddr(s); err == nil {
+		return addr.WithZone("").Unmap().String()
+	}
+	if ap, err := netip.ParseAddrPort(s); err == nil {
+		return ap.Addr().WithZone("").Unmap().String()
+	}
+	return ""
 }
 
 func directConnectionIP(c *gin.Context) string {
