@@ -50,6 +50,10 @@ func (p PatternDef) AppliesTo(location string) bool {
 
 // Patterns contains all compiled detection patterns, organized by threat type.
 // Patterns are compiled at package init time, not per-request.
+//
+// testdata/benign.tsv and testdata/attacks.tsv measure these patterns
+// (TestCorpus): tighten a pattern only with a sample in each corpus showing
+// what it stops flagging and what it still catches.
 var Patterns []PatternDef
 
 func init() {
@@ -63,27 +67,40 @@ func init() {
 		// in ModeBlock 403'd roughly one session in ten at random (issue #10).
 		{
 			Name: "SQLi_Basic",
-			// "--" only counts when it terminates a statement (followed by
-			// whitespace or end of input), the way SQLi_Comment already
-			// requires — never inside a hyphenated slug or token. "0x..."
-			// must not start mid-word, so hex inside base64 text is ignored.
-			Regex:          regexp.MustCompile(`(?i)(union\s+select|drop\s+table|insert\s+into|--(?:\s|$)|;--|'\s*or\s*'1'\s*=\s*'1|xp_cmdshell|exec\s*\(|cast\s*\(|convert\s*\(|char\s*\(|nchar\s*\(|varchar\s*\(|(?:^|\W)0x[0-9a-fA-F]{4,})`),
+			// Keywords that are also English ("drop table", "insert into",
+			// "convert (", "char(") only count in statement shape: a table
+			// name then a terminator, a column list or VALUES, a type
+			// argument. "--" only counts right after a quote, paren or digit
+			// — where it cuts off the rest of a query — never as a dash in
+			// prose ("rock -- n -- roll") or inside a slug or token. A hex
+			// literal must be a whole value or sit in SQL, not start a word
+			// ("0x1F600 emoji").
+			Regex:          regexp.MustCompile(`(?i)(union\s+(?:all\s+)?select|drop\s+table\s+(?:if\s+exists\s+)?[\w.\x60"\[\]]+\s*(?:;|--|#|/\*|$)|insert\s+into\s+[\w.\x60"\[\]]+\s*(?:\(|values\b|select\b)|(?:['")]\s*|\d)--(?:\s|$)|;--|'\s*or\s*'1'\s*=\s*'1|xp_cmdshell|exec\s*\(\s*['"@]|cast\s*\([^)]{1,80}\s+as\s+\w|convert\s*\(\s*\w+\s*,|n?char\s*\(\s*(?:\d+\s*,|0x)|varchar\s*\(|(?:^|[=\s(,])0x[0-9a-f]{4,}(?:$|[&),;]|--|\s+(?:and|or|union|from|limit)\b))`),
 			ThreatType:     sentinel.ThreatSQLi,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 80,
 			Locations:      []string{"query", "body"},
 		},
 		{
-			Name:           "SQLi_Blind",
-			Regex:          regexp.MustCompile(`(?i)(sleep\s*\(|benchmark\s*\(|waitfor\s+delay|pg_sleep|and\s+\d+\s*=\s*\d+|or\s+\d+\s*=\s*\d+)`),
+			Name: "SQLi_Blind",
+			// Delay functions count after a SQL operator or quote, or as the
+			// entire value ("id=sleep(5)"), not when named in a sentence. An
+			// "and 1=1" tautology counts where a query would end, not
+			// mid-sentence ("1 = 1 is true").
+			Regex:          regexp.MustCompile(`(?i)((?:\b(?:and|or|select|if|then|when)\b|[;'"(,]|\|\|)\s*(?:sleep|benchmark|pg_sleep)\s*\(|(?:^|=)\s*(?:sleep|benchmark)\s*\([^)]*\)\s*(?:$|&|--|#|;)|pg_sleep\s*\(|waitfor\s+delay|\b(?:and|or)\s+\d+\s*=\s*\d+\s*(?:$|&|--|#|/\*|;|'|"|\)))`),
 			ThreatType:     sentinel.ThreatSQLi,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 75,
 			Locations:      []string{"query", "body"},
 		},
 		{
-			Name:           "SQLi_Comment",
-			Regex:          regexp.MustCompile(`(?i)(/\*.*\*/|--\s|#\s*$)`),
+			Name: "SQLi_Comment",
+			// An inline /**/ counts between SQL tokens ("UNION/**/SELECT"),
+			// not inside a glob ("src/**/*.go"); MySQL's /*! executable
+			// comments always count. Same terminator rule as SQLi_Basic,
+			// and "#" needs a quote, paren or digit before it, so "C# vs F#"
+			// is not a MySQL comment.
+			Regex:          regexp.MustCompile(`(?i)(['")\w]/\*[^/]*?\*/\s*['"(\w]|/\*!|(?:['")]\s*|\d)--\s|['")\d]\s*#\s*$)`),
 			ThreatType:     sentinel.ThreatSQLi,
 			BaseSeverity:   sentinel.SeverityMedium,
 			BaseConfidence: 50,
@@ -106,8 +123,11 @@ func init() {
 		// this set must declare where it applies, so a new pattern can't
 		// silently inherit scan-everything (issue #10).
 		{
-			Name:           "XSS_Basic",
-			Regex:          regexp.MustCompile(`(?i)(<script[^>]*>|javascript\s*:|vbscript\s*:|onload\s*=|onerror\s*=|onclick\s*=|onmouseover\s*=|onfocus\s*=|onblur\s*=|eval\s*\(|document\.cookie|document\.write|window\.location)`),
+			Name: "XSS_Basic",
+			// eval( and document.cookie only count where they break out of a
+			// string or call ("';eval(", "(document.cookie"); named in a
+			// sentence they are a question about JavaScript, not a payload.
+			Regex:          regexp.MustCompile(`(?i)(<script[^>]*>|javascript\s*:|vbscript\s*:|onload\s*=|onerror\s*=|onclick\s*=|onmouseover\s*=|onfocus\s*=|onblur\s*=|[;'"(+]\s*(?:eval\s*\(|document\.(?:cookie|write)|window\.location))`),
 			ThreatType:     sentinel.ThreatXSS,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 80,
@@ -142,8 +162,12 @@ func init() {
 
 		// --- Command Injection ---
 		{
-			Name:           "CommandInject",
-			Regex:          regexp.MustCompile("(?i)(;\\s*ls|;\\s*cat\\s|;\\s*whoami|;\\s*id\\b|;\\s*uname|\\|\\s*nc\\s|wget\\s+https?:|curl\\s+https?:|bash\\s+-[ic]|/etc/passwd|/etc/shadow|\\$\\(|`[^`]+`)"),
+			Name: "CommandInject",
+			// $( and backticks count where a shell would start a new word
+			// after an injection point (a value's start, =, ;, |, &, a quote)
+			// — not inside Markdown prose ("run `ls -la` to see"). A bare
+			// /etc/passwd is a file reference, left to LFI.
+			Regex:          regexp.MustCompile("(?i)(;\\s*ls|;\\s*cat\\s|;\\s*whoami|;\\s*id\\b|;\\s*uname|\\|\\s*nc\\s|wget\\s+https?:|curl\\s+https?:|bash\\s+-[ic]|(?:^|[=;|&\"'(])\\s*(?:\\$\\(|`[^`]+`))"),
 			ThreatType:     sentinel.ThreatCommandInjection,
 			BaseSeverity:   sentinel.SeverityCritical,
 			BaseConfidence: 85,
@@ -159,8 +183,10 @@ func init() {
 			// inside "Chrome/140.0.0.0" and `10\.\d+\.\d+\.\d+` inside
 			// "110.0.0.0", blocking every stable-channel browser (issue #8).
 			// `::1` requires brackets for the same reason: the bare form
-			// matches any string containing "::1".
-			Regex:          regexp.MustCompile(`(?i)((?:^|[^\w.-])(?:localhost|127\.0\.0\.1|0\.0\.0\.0|169\.254\.169\.254|\[::1\]|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(?:[^\w.-]|$)|file:\/\/|dict:\/\/|gopher:\/\/|ftp:\/\/[^.]*localhost)`),
+			// matches any string containing "::1". The host must end the
+			// value or be followed by a port, path, quote or separator — a
+			// URL or a host field, not words ("localhost:3000 setup guide").
+			Regex:          regexp.MustCompile(`(?i)((?:^|[^\w.-])(?:localhost|127\.0\.0\.1|0\.0\.0\.0|169\.254\.169\.254|\[::1\]|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(?::\d{1,5})?(?:[/"'&?#,;\\]|$)|file:\/\/|dict:\/\/|gopher:\/\/|ftp:\/\/[^.]*localhost)`),
 			ThreatType:     sentinel.ThreatSSRF,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 70,
@@ -179,8 +205,11 @@ func init() {
 
 		// --- Local File Inclusion (LFI) ---
 		{
-			Name:           "LFI",
-			Regex:          regexp.MustCompile(`(?i)(etc[/\\]passwd|etc[/\\]shadow|proc[/\\]self|var[/\\]log|windows[/\\]system32|boot\.ini|web\.config|\.htaccess|\.env)`),
+			Name: "LFI",
+			// Dotfiles and web.config count as a whole path segment or value
+			// ("/.env", "file=.env.local", "/.git/config"), not as part of a
+			// longer name ("report.env.pdf", "web.config-explained").
+			Regex:          regexp.MustCompile(`(?i)(etc[/\\]passwd|etc[/\\]shadow|proc[/\\]self|var[/\\]log|windows[/\\]system32|boot\.ini|(?:^|[/\\=])(?:web\.config|\.htaccess|\.htpasswd|\.git|\.env(?:\.[\w-]+)?)(?:$|[/?&#"'\s;,]))`),
 			ThreatType:     sentinel.ThreatLFI,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 80,
@@ -189,20 +218,29 @@ func init() {
 
 		// --- Open Redirect ---
 		{
-			Name:           "OpenRedirect",
-			Regex:          regexp.MustCompile(`(?i)(=\s*//[^/]|=\s*https?://|redirect.*=.*https?://|next.*=.*https?://|url.*=.*https?://|return.*=.*https?://|goto.*=.*https?://)`),
+			Name: "OpenRedirect",
+			// Only parameters named for a redirect target, holding an
+			// absolute or scheme-relative URL (plain or percent-encoded).
+			// Any "=https://" used to count, so "avatar=https://cdn..." was
+			// an attack. Sentinel can't tell your own host from someone
+			// else's, so a legitimate absolute callback still matches — set
+			// this rule to low if your redirect parameters carry them.
+			Regex:          regexp.MustCompile(`(?i)(?:^|[?&;])(?:[\w.-]*(?:redir|return|next|goto|continue|dest|forward|callback|relaystate|success|cancel|service)[\w.-]*|url|uri|to|out|target|r|u|link|go)=\s*(?:https?(?::|%3a))?(?://|%2f%2f|/\\|%2f%5c)`),
 			ThreatType:     sentinel.ThreatOpenRedirect,
 			BaseSeverity:   sentinel.SeverityMedium,
 			BaseConfidence: 60,
 			// Referer headers routinely embed full URLs in their own query
 			// strings ("?url=https://..."), so this must never scan headers.
-			Locations:      []string{"query"},
+			Locations: []string{"query"},
 		},
 
 		// --- Prototype Pollution ---
 		{
-			Name:           "PrototypePollution",
-			Regex:          regexp.MustCompile(`(?i)(__proto__|constructor\s*\[|prototype\s*\[)`),
+			Name: "PrototypePollution",
+			// __proto__ counts as a key or property access, not a word in a
+			// search; constructor → prototype counts in any nesting —
+			// brackets, dots or JSON objects.
+			Regex:          regexp.MustCompile(`(?i)(__proto__\s*(?:\[|\]|\.|["']\s*:|%5b|%5d|%2e|=)|constructor\W{1,6}prototype|constructor\s*\[|prototype\s*\[)`),
 			ThreatType:     sentinel.ThreatPrototypePollution,
 			BaseSeverity:   sentinel.SeverityMedium,
 			BaseConfidence: 75,

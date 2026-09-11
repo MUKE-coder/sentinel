@@ -1,0 +1,43 @@
+# Scan a deliberately injectable app behind Sentinel with OWASP ZAP and
+# sqlmap. See README.md in this directory.
+services:
+  target:
+    build:
+      context: ../..
+      dockerfile: security/scan/Dockerfile
+    environment:
+      SENTINEL_WAF: ${SENTINEL_WAF:-block}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 2s
+      retries: 15
+
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    profiles: ["scan"]
+    depends_on:
+      target:
+        condition: service_healthy
+    user: "0"
+    volumes:
+      - ./reports:/zap/wrk:rw
+    command: >
+      zap-full-scan.py -t http://target:8080/ -I
+      -r zap-${SENTINEL_WAF:-block}.html -J zap-${SENTINEL_WAF:-block}.json
+
+  sqlmap:
+    image: python:3.12-slim
+    profiles: ["scan"]
+    depends_on:
+      target:
+        condition: service_healthy
+    volumes:
+      - ./reports:/reports
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        pip install --quiet --root-user-action=ignore sqlmap &&
+        sqlmap -u "http://target:8080/api/items?id=1" --batch --level 3 --risk 2
+        --flush-session --output-dir /reports/sqlmap-${SENTINEL_WAF:-block}

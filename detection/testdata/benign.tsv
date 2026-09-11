@@ -1,0 +1,92 @@
+# Legitimate-but-unusual traffic. Every line should pass the WAF; each one
+# that is flagged counts as a false positive. Format: location<TAB>input
+# Locations: query (raw query string), body, path, header (User-Agent).
+query	q=select a plan that fits your team
+query	q=union station opening hours
+query	q=drop table leg replacement parts
+query	q=how to insert into a list in python
+query	q=rock -- n -- roll playlist
+query	q=C# vs F#
+query	q=price 5 - 10 USD
+query	comment=Great post!! -- John
+query	redirect=/dashboard
+query	next=/account/settings
+query	q=what does document.cookie return
+query	q=eval(x) in python safely
+query	q=relative paths like ../ explained
+query	q=sleep(5) vs time.sleep
+query	name=O'Brien
+query	q=100% organic cotton
+query	q=localhost:3000 setup guide
+query	q=192.168.1.1 router login page
+query	q=cast iron skillet care
+query	q=char(10) newline in sql
+query	q=convert (units) calculator
+query	q=exec (executive) summary template
+query	q=__proto__ explained
+query	q=where is 1=1 used in queries
+query	q=2+2=4
+query	q=onload event in javascript tutorial
+query	q=%3Cscript%3E tag tutorial
+query	q=semicolon; then select an option
+query	q=cat /etc/hosts format
+query	q=SELECT * FROM users tutorial
+query	q=wget vs curl download speed
+query	tags=c%2B%2B,go,rust
+query	q=café crème brûlée
+query	q=日本語の検索
+query	q=%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82
+query	filter[price][gte]=10&filter[price][lte]=20
+query	sort=-created_at&page[size]=50
+query	q=0x1F600 emoji codepoint
+query	date=2026-09-11T10:00:00Z&tz=UTC+03:00
+query	callback=https://example.com/oauth/callback
+query	return_to=https://example.com/docs
+query	avatar=https://cdn.example.com/u/1.png
+query	website=https://example.org
+query	q=100%25 cotton, 50%25 off
+query	q=src/**/*.go
+query	id=0x1F600
+body	{"bio":"Full-stack dev. I select tools carefully and update my blog weekly."}
+body	{"message":"Hi support, my query SELECT * FROM orders WHERE id = 5 is slow"}
+body	{"message":"I ran DROP TABLE users; by mistake, can you restore the backup?"}
+body	{"code":"for i in $(seq 1 10); do echo $i; done"}
+body	{"snippet":"run `ls -la` to see hidden files"}
+body	{"note":"the /etc/passwd format has seven fields"}
+body	{"name":"李小龍","city":"北京"}
+body	{"name":"Zoë Ødegaard","city":"Tromsø"}
+body	{"emoji":"😀🔥✨"}
+body	{"nested":{"a":[1,2,{"b":null}],"c":{"d":{"e":"f"}}}}
+body	{"html":"<p>Hello <b>world</b> and <em>friends</em></p>"}
+body	{"markdown":"Use `grep -r TODO .` to find tasks"}
+body	{"password":"p@ss--word!"}
+body	{"comment":"in math, 2 > 1 and 1 = 1 is true"}
+body	{"address":"742 Evergreen Terrace; Springfield"}
+body	{"query":"SELECT name FROM users; SELECT 1"}
+body	{"text":"Call me at 555-0100 -- thanks"}
+body	{"title":"Why I stopped using exec() in Node"}
+body	{"url":"https://example.com/image.png"}
+body	{"search":"union of two sets in math"}
+body	name=Jane+Doe&email=jane%40example.com&message=Hello+there
+body	{"description":"50% off -- today only!"}
+body	{"csv":"id,name\n1,alice\n2,bob"}
+body	{"regex":"^[a-z0-9_-]{3,16}$"}
+body	{"config":"server { listen 80; server_name example.com; }"}
+body	{"sql_help":"Is it safe to use ' OR '1'='1 in a demo about SQL injection?"}
+path	/blog/2026/09/select-the-right-plan
+path	/products/union-jack-flag
+path	/files/report.env.pdf
+path	/guides/web.config-explained
+path	/api/users/me
+path	/search/drop-table-legs
+path	/docs/v2/getting-started
+path	/static/js/app.min.js
+path	/@user/posts/123
+path	/wiki/C%2B%2B
+header	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36
+header	Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15
+header	Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0
+header	Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148
+header	curl/8.9.1
+header	Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)
+header	Go-http-client/1.1
