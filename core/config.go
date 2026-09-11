@@ -218,6 +218,19 @@ type IPReputationConfig struct {
 	AbuseIPDBKey  string
 	AutoBlock     bool
 	MinAbuseScore int
+
+	// MaxChecksPerDay caps live AbuseIPDB checks of attacking IPs; cached
+	// results don't count. Default: 900, under the free plan's 1,000 a day.
+	MaxChecksPerDay int
+
+	// Feeds are URLs of public IP blocklists: plain text with one IP or CIDR
+	// per line (Spamhaus DROP, FireHOL netsets) or NDJSON with a "cidr" field
+	// (Spamhaus drop_v4.json). Listed addresses are blocked like IPs blocked
+	// from the dashboard. Feeds work without an AbuseIPDB key or Enabled.
+	Feeds []string
+
+	// FeedRefresh is how often feeds are downloaded again. Default: 24h.
+	FeedRefresh time.Duration
 }
 
 // GeoConfig configures IP geolocation.
@@ -432,6 +445,12 @@ func (c *Config) ApplyDefaults() {
 
 	if c.IPReputation.MinAbuseScore == 0 {
 		c.IPReputation.MinAbuseScore = 80
+	}
+	if c.IPReputation.MaxChecksPerDay == 0 {
+		c.IPReputation.MaxChecksPerDay = 900
+	}
+	if c.IPReputation.FeedRefresh == 0 {
+		c.IPReputation.FeedRefresh = 24 * time.Hour
 	}
 
 	if c.Geo.Provider == "" {

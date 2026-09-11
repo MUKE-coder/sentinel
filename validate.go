@@ -3,6 +3,7 @@ package sentinel
 import (
 	"fmt"
 	"net/netip"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -265,6 +266,16 @@ func ValidateConfig(config Config) []ConfigIssue {
 	if config.IPReputation.Enabled && config.IPReputation.AbuseIPDBKey == "" {
 		report(IssueError, "IPReputation.AbuseIPDBKey",
 			"IP reputation is enabled but AbuseIPDBKey is empty — every reputation check silently returns nothing")
+	}
+	if config.IPReputation.AutoBlock && !config.IPReputation.Enabled {
+		report(IssueWarning, "IPReputation.AutoBlock",
+			"AutoBlock is set but IPReputation.Enabled is false — attacking IPs are never checked, so nothing is auto-blocked")
+	}
+	for _, feed := range config.IPReputation.Feeds {
+		u, err := url.Parse(feed)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			report(IssueError, "IPReputation.Feeds", "%q is not an http(s) URL — the feed is never loaded", feed)
+		}
 	}
 
 	return issues

@@ -222,6 +222,16 @@ func TestValidateConfigCatchesSilentTraps(t *testing.T) {
 			IssueWarning, "Storage.Driver",
 		},
 		{
+			"blocklist feed that is not a URL",
+			Config{IPReputation: IPReputationConfig{Feeds: []string{"spamhaus-drop.txt"}}},
+			IssueError, "IPReputation.Feeds",
+		},
+		{
+			"auto-block without reputation checks",
+			Config{IPReputation: IPReputationConfig{AutoBlock: true}},
+			IssueWarning, "IPReputation.AutoBlock",
+		},
+		{
 			"short audit HMAC key",
 			Config{Storage: StorageConfig{AuditKey: "short"}},
 			IssueWarning, "Storage.AuditKey",

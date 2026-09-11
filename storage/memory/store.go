@@ -61,7 +61,8 @@ func (s *Store) GetThreat(ctx context.Context, id string) (*sentinel.ThreatEvent
 	if !ok {
 		return nil, nil
 	}
-	return t, nil
+	c := *t // UpdateThreat changes the stored event; hand out a copy
+	return &c, nil
 }
 
 // ListThreats returns a paginated, filtered list of threat events.
@@ -100,7 +101,13 @@ func (s *Store) ListThreats(ctx context.Context, filter sentinel.ThreatFilter) (
 		end = int(total)
 	}
 
-	return filtered[start:end], total, nil
+	// Copies, so a concurrent UpdateThreat never races a caller reading them.
+	page := make([]*sentinel.ThreatEvent, 0, end-start)
+	for _, t := range filtered[start:end] {
+		c := *t
+		page = append(page, &c)
+	}
+	return page, total, nil
 }
 
 // UpdateThreat updates specific fields of a threat event.
@@ -124,11 +131,13 @@ func (s *Store) UpdateThreat(ctx context.Context, id string, update sentinel.Thr
 func (s *Store) UpsertActor(ctx context.Context, actor *sentinel.ThreatActor) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.actors[actor.IP] = actor
+	s.actors[actor.IP] = cloneActor(actor)
 	return nil
 }
 
-// GetActor retrieves a threat actor by IP address.
+// GetActor retrieves a threat actor by IP address. It returns a copy, so a
+// caller can update it (as the profiler and reputation watcher do) without
+// racing other readers of the stored profile.
 func (s *Store) GetActor(ctx context.Context, ip string) (*sentinel.ThreatActor, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -136,7 +145,14 @@ func (s *Store) GetActor(ctx context.Context, ip string) (*sentinel.ThreatActor,
 	if !ok {
 		return nil, nil
 	}
-	return a, nil
+	return cloneActor(a), nil
+}
+
+func cloneActor(a *sentinel.ThreatActor) *sentinel.ThreatActor {
+	c := *a
+	c.AttackTypes = append([]string(nil), a.AttackTypes...)
+	c.TargetedRoutes = append([]string(nil), a.TargetedRoutes...)
+	return &c
 }
 
 // ListActors returns a paginated, filtered list of threat actors.
@@ -163,7 +179,7 @@ func (s *Store) ListActors(ctx context.Context, filter sentinel.ActorFilter) ([]
 			!strings.Contains(a.Country, filter.Search) {
 			continue
 		}
-		filtered = append(filtered, a)
+		filtered = append(filtered, cloneActor(a))
 	}
 
 	sort.Slice(filtered, func(i, j int) bool {

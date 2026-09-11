@@ -1240,6 +1240,24 @@ Storage: sentinel.StorageConfig{
             <td><code>80</code></td>
             <td>Minimum AbuseIPDB confidence score (0-100) to consider an IP malicious.</td>
           </tr>
+          <tr>
+            <td><code>MaxChecksPerDay</code></td>
+            <td><code>int</code></td>
+            <td><code>900</code></td>
+            <td>Daily cap on live checks of attacking IPs; cached results don't count. (v2.4.0+)</td>
+          </tr>
+          <tr>
+            <td><code>Feeds</code></td>
+            <td><code>[]string</code></td>
+            <td><code>nil</code></td>
+            <td>Public blocklist URLs (Spamhaus DROP, FireHOL netsets, NDJSON with a <code>cidr</code> field) whose addresses are blocked. Works without an AbuseIPDB key. (v2.4.0+)</td>
+          </tr>
+          <tr>
+            <td><code>FeedRefresh</code></td>
+            <td><code>time.Duration</code></td>
+            <td><code>24h</code></td>
+            <td>How often feeds are downloaded again. (v2.4.0+)</td>
+          </tr>
         </tbody>
       </table>
 
@@ -1251,13 +1269,16 @@ Storage: sentinel.StorageConfig{
     AbuseIPDBKey:  os.Getenv("ABUSEIPDB_API_KEY"),
     AutoBlock:     true,
     MinAbuseScore: 80,
+    Feeds:         []string{"https://www.spamhaus.org/drop/drop_v4.json"},
 }`}
       />
 
-      <Callout type="warning" title="API Rate Limits">
-        AbuseIPDB has rate limits on their free plan. Sentinel caches reputation lookups to minimize
-        API calls, but high-traffic applications should consider a paid AbuseIPDB plan or adjust the{' '}
-        <code>MinAbuseScore</code> threshold.
+      <Callout type="info" title="Live checks and quota">
+        Since v2.4.0, every IP behind a threat event is checked in the background as it arrives —
+        at most once a day per IP, private addresses skipped, capped by{' '}
+        <code>MaxChecksPerDay</code> — and <code>AutoBlock</code> acts on the result. IP blocks
+        (dashboard, AutoBlock, feeds) are enforced whether or not the WAF is enabled. See{' '}
+        <a href="/docs/threat-intelligence#ip-reputation">Threat Intelligence</a>.
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
