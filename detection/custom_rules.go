@@ -115,30 +115,28 @@ func (e *CustomRuleEngine) scanRule(cr *CompiledRule, req sentinel.InspectedRequ
 	// If AppliesTo is empty, check everything
 	checkAll := len(appliesTo) == 0
 
+	add := func(matched, location string) {
+		matches = append(matches, ThreatMatch{
+			PatternName:    cr.Rule.Name,
+			ThreatType:     sentinel.ThreatType("CustomRule"),
+			Matched:        truncate(matched, 200),
+			Location:       location,
+			BaseSeverity:   cr.Rule.Severity,
+			BaseConfidence: 85,
+			LogOnly:        cr.Rule.Action == RuleActionLog,
+		})
+	}
+
 	if checkAll || appliesTo["path"] {
 		if m := cr.Regex.FindString(req.Path); m != "" {
-			matches = append(matches, ThreatMatch{
-				PatternName:    cr.Rule.Name,
-				ThreatType:     sentinel.ThreatType("CustomRule"),
-				Matched:        truncate(m, 200),
-				Location:       "path",
-				BaseSeverity:   cr.Rule.Severity,
-				BaseConfidence: 85,
-			})
+			add(m, "path")
 		}
 	}
 
 	if checkAll || appliesTo["query"] {
 		if req.RawQuery != "" {
 			if m := cr.Regex.FindString(req.RawQuery); m != "" {
-				matches = append(matches, ThreatMatch{
-					PatternName:    cr.Rule.Name,
-					ThreatType:     sentinel.ThreatType("CustomRule"),
-					Matched:        truncate(m, 200),
-					Location:       "query",
-					BaseSeverity:   cr.Rule.Severity,
-					BaseConfidence: 85,
-				})
+				add(m, "query")
 			}
 		}
 	}
@@ -147,14 +145,7 @@ func (e *CustomRuleEngine) scanRule(cr *CompiledRule, req sentinel.InspectedRequ
 		for _, values := range req.Headers {
 			for _, val := range values {
 				if m := cr.Regex.FindString(val); m != "" {
-					matches = append(matches, ThreatMatch{
-						PatternName:    cr.Rule.Name,
-						ThreatType:     sentinel.ThreatType("CustomRule"),
-						Matched:        truncate(m, 200),
-						Location:       "header",
-						BaseSeverity:   cr.Rule.Severity,
-						BaseConfidence: 85,
-					})
+					add(m, "header")
 				}
 			}
 		}
@@ -163,14 +154,7 @@ func (e *CustomRuleEngine) scanRule(cr *CompiledRule, req sentinel.InspectedRequ
 	if checkAll || appliesTo["body"] {
 		if req.Body != "" {
 			if m := cr.Regex.FindString(req.Body); m != "" {
-				matches = append(matches, ThreatMatch{
-					PatternName:    cr.Rule.Name,
-					ThreatType:     sentinel.ThreatType("CustomRule"),
-					Matched:        truncate(m, 200),
-					Location:       "body",
-					BaseSeverity:   cr.Rule.Severity,
-					BaseConfidence: 85,
-				})
+				add(m, "body")
 			}
 		}
 	}

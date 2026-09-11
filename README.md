@@ -3,7 +3,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
-[![Release](https://img.shields.io/badge/Release-v2.2.2-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Release](https://img.shields.io/badge/Release-v2.3.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
 [![Tests](https://img.shields.io/badge/Tests-17%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
 [![Dashboard Pages](https://img.shields.io/badge/Dashboard-13%20pages-purple)](https://github.com/MUKE-coder/sentinel)
@@ -19,6 +19,16 @@ sentinel.Mount(r, nil, sentinel.Config{})
 r.Run(":8080")
 // Dashboard → http://localhost:8080/sentinel/ui
 ```
+
+## What's new in v2.3.0
+
+**Settings, dashboard controls, and reports that silently did nothing now work.**
+
+- **Dashboard config edits take effect** — changing the WAF mode or rules, route rate limits, or alert severity from the dashboard updated only the API's copy of the config; enforcement never changed. Edits now apply to live requests and are validated.
+- **`WAF.Rules`, `WAFRule.Action`, and `RateLimit.Strategy` are enforced** — none of the three was ever read. Sensitivity levels (`off` / `low` / `medium` / `strict`) now change detection (the defaults detect exactly what they did), `Action: "log"` watches a custom rule without blocking, and the default limiter is a real sliding window.
+- **User activity is recorded** when `UserExtractor` is set — the Users page, the GDPR report, and anomaly detection saw nothing before.
+- **Audit trail for dashboard actions and logins** — blocks, unblocks, WAF changes, and logins are audit entries, so the PCI-DSS auth section has data. Audit logs are kept 365 days by default (`Storage.AuditRetentionDays`).
+- **Reports carry provenance** — durability, retention, coverage, and a warning whenever the data can't support the report. Reports on in-memory storage are refused in release mode.
 
 ## What's new in v2.2.2
 

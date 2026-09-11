@@ -221,6 +221,31 @@ func TestValidateConfigCatchesSilentTraps(t *testing.T) {
 			Config{Storage: StorageConfig{Driver: Memory}},
 			IssueWarning, "Storage.Driver",
 		},
+		{
+			"unknown WAF mode acts as log mode",
+			Config{WAF: WAFConfig{Mode: "Block"}},
+			IssueError, "WAF.Mode",
+		},
+		{
+			"unknown rule sensitivity",
+			Config{WAF: WAFConfig{Rules: RuleSet{SQLInjection: "paranoid"}}},
+			IssueError, "WAF.Rules",
+		},
+		{
+			"custom rule with unknown action",
+			Config{WAF: WAFConfig{CustomRules: []WAFRule{{ID: "act", Pattern: "x", Action: "drop"}}}},
+			IssueError, `WAF.CustomRules["act"]`,
+		},
+		{
+			"unknown rate limit strategy",
+			Config{RateLimit: RateLimitConfig{Strategy: "leaky_bucket"}},
+			IssueError, "RateLimit.Strategy",
+		},
+		{
+			"deprecated AI daily summary",
+			Config{AI: &AIConfig{Provider: Claude, APIKey: "sk-x", DailySummary: true}},
+			IssueWarning, "AI.DailySummary",
+		},
 	}
 
 	for _, tc := range cases {

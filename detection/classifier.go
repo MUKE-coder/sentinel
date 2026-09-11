@@ -29,6 +29,10 @@ type ThreatMatch struct {
 
 	// BaseConfidence is the confidence from the pattern definition.
 	BaseConfidence int
+
+	// LogOnly marks a match from a custom rule with Action "log": recorded,
+	// never enforced by the WAF mode.
+	LogOnly bool
 }
 
 // ClassifyRequest scans all input vectors of a request and returns all matches.

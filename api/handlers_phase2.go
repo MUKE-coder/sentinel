@@ -1,12 +1,16 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/MUKE-coder/sentinel/v2/ai"
 	sentinel "github.com/MUKE-coder/sentinel/v2/core"
+	"github.com/MUKE-coder/sentinel/v2/detection"
+	"github.com/MUKE-coder/sentinel/v2/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -189,7 +193,7 @@ func (s *Server) handleIPReputation(c *gin.Context) {
 func (s *Server) handleGetAlertConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
-			"min_severity": s.config.Alerts.MinSeverity,
+			"min_severity": s.alertMinSeverity(),
 			"slack": gin.H{
 				"enabled":     s.config.Alerts.Slack != nil && s.config.Alerts.Slack.WebhookURL != "",
 				"webhook_url": maskURL(s.config.Alerts.Slack),
@@ -206,8 +210,17 @@ func (s *Server) handleGetAlertConfig(c *gin.Context) {
 	})
 }
 
+// alertMinSeverity is the threshold the running dispatcher alerts on.
+func (s *Server) alertMinSeverity() sentinel.Severity {
+	if s.alertDispatch != nil {
+		return s.alertDispatch.MinSeverity()
+	}
+	return s.config.Alerts.MinSeverity
+}
+
 func (s *Server) handleUpdateAlertConfig(c *gin.Context) {
-	// Alert config updates are in-memory only (restart resets to config file values)
+	// Changes apply to the running dispatcher but are not persisted: a
+	// restart goes back to the configured value.
 	var req struct {
 		MinSeverity string `json:"min_severity"`
 	}
@@ -217,9 +230,17 @@ func (s *Server) handleUpdateAlertConfig(c *gin.Context) {
 	}
 
 	if req.MinSeverity != "" {
-		before := sentinel.JSONMap{"min_severity": string(s.config.Alerts.MinSeverity)}
-		s.config.Alerts.MinSeverity = sentinel.Severity(req.MinSeverity)
-		s.auditDashboard(c, "UPDATE", auditResourceAlertConfig, "alerts", before, sentinel.JSONMap{"min_severity": req.MinSeverity}, nil)
+		sev, ok := parseSeverity(req.MinSeverity)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "min_severity must be Low, Medium, High, or Critical", "code": "BAD_REQUEST"})
+			return
+		}
+		before := sentinel.JSONMap{"min_severity": string(s.alertMinSeverity())}
+		s.config.Alerts.MinSeverity = sev
+		if s.alertDispatch != nil {
+			s.alertDispatch.SetMinSeverity(sev)
+		}
+		s.auditDashboard(c, "UPDATE", auditResourceAlertConfig, "alerts", before, sentinel.JSONMap{"min_severity": string(sev)}, nil)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Alert config updated"})
@@ -374,33 +395,59 @@ func (s *Server) handleSOC2Report(c *gin.Context) {
 // --- WAF Rules handlers ---
 
 func (s *Server) handleGetWAFRules(c *gin.Context) {
+	mode, rules := s.config.WAF.Mode, s.config.WAF.Rules
+	if s.waf != nil {
+		mode, rules = s.waf.Mode(), s.waf.Rules()
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
-			"mode":  s.config.WAF.Mode,
-			"rules": s.config.WAF.Rules,
+			"enabled": s.waf != nil,
+			"mode":    mode,
+			"rules":   rules,
 		},
 	})
 }
 
+// handleUpdateWAFRules changes the running WAF's mode and per-category
+// sensitivity. Rule fields left empty keep their current value. Changes are
+// not persisted: a restart goes back to the configured values.
 func (s *Server) handleUpdateWAFRules(c *gin.Context) {
 	var req struct {
-		Mode  string              `json:"mode"`
-		Rules sentinel.RuleSet    `json:"rules"`
+		Mode  string            `json:"mode"`
+		Rules *sentinel.RuleSet `json:"rules"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "code": "BAD_REQUEST"})
 		return
 	}
-
-	before := sentinel.JSONMap{"mode": string(s.config.WAF.Mode), "rules": toJSONMap(s.config.WAF.Rules)}
-	if req.Mode != "" {
-		s.config.WAF.Mode = sentinel.WAFMode(req.Mode)
+	if s.waf == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "The WAF is not enabled (WAF.Enabled is false), so there is no mode or rule set to change.", "code": "WAF_DISABLED"})
+		return
 	}
-	s.config.WAF.Rules = req.Rules
-	after := sentinel.JSONMap{"mode": string(s.config.WAF.Mode), "rules": toJSONMap(s.config.WAF.Rules)}
-	s.auditDashboard(c, "UPDATE", auditResourceWAFConfig, "waf", before, after, nil)
 
-	c.JSON(http.StatusOK, gin.H{"message": "WAF rules updated"})
+	mode, rules := s.waf.Mode(), s.waf.Rules()
+	before := sentinel.JSONMap{"mode": string(mode), "rules": toJSONMap(rules)}
+	if req.Mode != "" {
+		mode = sentinel.WAFMode(req.Mode)
+	}
+	if req.Rules != nil {
+		rules = mergeRuleSet(rules, *req.Rules)
+	}
+	if !middleware.ValidWAFMode(mode) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "mode must be log, block, or challenge", "code": "BAD_REQUEST"})
+		return
+	}
+	if err := middleware.ValidateRuleSet(rules); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "rules." + err.Error(), "code": "BAD_REQUEST"})
+		return
+	}
+
+	s.waf.SetMode(mode)
+	s.waf.SetRules(rules)
+	s.config.WAF.Mode, s.config.WAF.Rules = mode, rules
+	s.auditDashboard(c, "UPDATE", auditResourceWAFConfig, "waf", before, sentinel.JSONMap{"mode": string(mode), "rules": toJSONMap(rules)}, nil)
+
+	c.JSON(http.StatusOK, gin.H{"message": "WAF rules updated", "data": gin.H{"mode": mode, "rules": rules}})
 }
 
 func (s *Server) handleListCustomRules(c *gin.Context) {
@@ -420,6 +467,10 @@ func (s *Server) handleAddCustomRule(c *gin.Context) {
 
 	if rule.ID == "" || rule.Pattern == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID and pattern are required", "code": "BAD_REQUEST"})
+		return
+	}
+	if !detection.ValidRuleAction(rule.Action) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": `action must be "block" or "log"`, "code": "BAD_REQUEST"})
 		return
 	}
 
@@ -490,6 +541,9 @@ func (s *Server) handleTestWAFPayload(c *gin.Context) {
 
 func (s *Server) handleGetRateLimits(c *gin.Context) {
 	cfg := s.config.RateLimit
+	if s.rateLimiter != nil {
+		cfg.Strategy, cfg.ByRoute = s.rateLimiter.Strategy(), s.rateLimiter.RouteLimits()
+	}
 	data := gin.H{
 		"enabled":  cfg.Enabled,
 		"strategy": cfg.Strategy,
@@ -525,28 +579,44 @@ func (s *Server) handleUpdateRateLimits(c *gin.Context) {
 		return
 	}
 
-	before := sentinel.JSONMap{"by_route": toJSONMap(s.config.RateLimit.ByRoute)}
-	if req.ByRoute != nil {
-		if s.config.RateLimit.ByRoute == nil {
-			s.config.RateLimit.ByRoute = make(map[string]sentinel.Limit)
-		}
-		for route, limit := range req.ByRoute {
-			window, err := time.ParseDuration(limit.Window)
-			if err != nil {
-				continue
-			}
-			if limit.Requests <= 0 {
-				delete(s.config.RateLimit.ByRoute, route)
-			} else {
-				s.config.RateLimit.ByRoute[route] = sentinel.Limit{
-					Requests: limit.Requests,
-					Window:   window,
-				}
-			}
-		}
+	if s.rateLimiter == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Rate limiting is not enabled (RateLimit.Enabled is false), so route limits have nothing to apply to.", "code": "RATE_LIMIT_DISABLED"})
+		return
 	}
 
-	s.auditDashboard(c, "UPDATE", auditResourceRateLimit, "by_route", before, sentinel.JSONMap{"by_route": toJSONMap(s.config.RateLimit.ByRoute)}, nil)
+	// Build the whole new table first and apply it only if every entry is
+	// valid; a bad entry used to be skipped silently while the response said
+	// the limits were updated. Requests <= 0 removes a route's limit.
+	current := s.rateLimiter.RouteLimits()
+	next := make(map[string]sentinel.Limit, len(current))
+	for route, limit := range current {
+		next[route] = limit
+	}
+	for route, limit := range req.ByRoute {
+		if limit.Requests <= 0 {
+			delete(next, route)
+			continue
+		}
+		window, err := time.ParseDuration(limit.Window)
+		if err != nil || window <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("by_route[%q]: window %q is not a positive duration such as \"1m\"", route, limit.Window), "code": "BAD_REQUEST"})
+			return
+		}
+		if !strings.HasPrefix(route, "/") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("by_route[%q]: routes must start with \"/\"", route), "code": "BAD_REQUEST"})
+			return
+		}
+		if err := middleware.ValidateRoutePattern(route); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("by_route[%q]: %v", route, err), "code": "BAD_REQUEST"})
+			return
+		}
+		next[route] = sentinel.Limit{Requests: limit.Requests, Window: window}
+	}
+
+	// Applies to live requests; not persisted across a restart.
+	s.rateLimiter.SetRouteLimits(next)
+	s.config.RateLimit.ByRoute = next
+	s.auditDashboard(c, "UPDATE", auditResourceRateLimit, "by_route", sentinel.JSONMap{"by_route": toJSONMap(current)}, sentinel.JSONMap{"by_route": toJSONMap(next)}, nil)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Rate limits updated"})
 }

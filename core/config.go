@@ -268,6 +268,8 @@ type AIConfig struct {
 	Provider     AIProvider
 	APIKey       string
 	Model        string
+	// Deprecated: DailySummary has no effect. Nothing runs on a schedule; the
+	// daily summary is generated on demand from the dashboard's AI page.
 	DailySummary bool
 
 	// MaxCallsPerDay caps the total number of upstream LLM calls per UTC day

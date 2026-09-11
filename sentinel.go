@@ -224,8 +224,10 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 
 	// 6. Register middleware. The IP manager's synced cache answers blocklist
 	// lookups so the WAF never queries storage on the request hot path.
+	var waf *middleware.WAF
 	if config.WAF.Enabled {
-		router.Use(middleware.WAFMiddleware(config.WAF, store, pipe, customRuleEngine, ipManager))
+		waf = middleware.NewWAF(config.WAF, store, pipe, customRuleEngine, ipManager)
+		router.Use(waf.Handler())
 	}
 
 	// 7. Register rate limiter
@@ -254,6 +256,9 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	apiServer.SetCustomRuleEngine(customRuleEngine)
 	if rateLimiter != nil {
 		apiServer.SetRateLimiter(rateLimiter)
+	}
+	if waf != nil {
+		apiServer.SetWAF(waf)
 	}
 
 	// 10b. Initialize AI provider (optional)

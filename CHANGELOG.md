@@ -2,11 +2,13 @@
 
 All notable changes to Sentinel are documented here.
 
-## [2.3.0] - Unreleased
+## [2.3.0] - 2026-09-11
 
-The report sections and dashboard pages that v2.2.2 admitted were reading
-data nothing wrote now have real data behind them — and every report says
-how far that data can be trusted.
+Settings, dashboard controls, and report sections that silently did
+nothing now do what they say. The report sections that v2.2.2 admitted were
+reading data nothing wrote have real data behind them, every report says
+how far that data can be trusted, and dashboard config edits finally reach
+the running middleware.
 
 ### Added
 
@@ -45,6 +47,51 @@ how far that data can be trusted.
   lands in the future and deletes everything), audit retention under 12
   months (warning), and in-memory storage (warning).
 
+### Settings that did nothing now do what they say
+
+- **`WAF.Rules` sensitivity is enforced.** The per-category levels were
+  never read — every pattern ran whatever they said. Now `off` disables a
+  category, `low` keeps only the most precise patterns (confidence ≥ 80),
+  `medium` drops the noisiest (< 60), and `strict` keeps all of them. The
+  defaults keep every pattern the WAF ran before, so a default config
+  detects exactly what it did; a category you had set to `off`, `low`, or
+  `medium` now actually changes detection.
+- **`WAFRule.Action: "log"` records without blocking.** A custom rule with
+  Action `"log"` is recorded as a threat but never enforced, even in block
+  mode, so a new rule can be watched against real traffic before it is
+  trusted to block. A request that also trips an enforced rule is still
+  blocked.
+- **`RateLimit.Strategy` is honoured.** Every limit was a fixed window,
+  whatever the config said. `sliding_window` (the default) now counts over
+  the window ending now, so twice the limit can no longer pass in a moment
+  either side of a window boundary; `fixed_window` and `token_bucket` are
+  implemented too.
+- **Dashboard config edits reach the running middleware.** Changing the WAF
+  mode or rules (`PUT /api/waf/rules`), route rate limits
+  (`PUT /api/rate-limits`), or the alert severity (`PUT /api/alerts/config`)
+  updated only the API server's copy of the config — enforcement never
+  changed, while the dashboard showed the new values. They now apply to
+  live requests immediately (not persisted across a restart). New
+  `middleware.NewWAF` with `SetMode` / `SetRules`,
+  `RateLimiter.SetStrategy` / `SetRouteLimits` / `RouteLimits`, and
+  `Dispatcher.SetMinSeverity` / `MinSeverity`.
+- **Those endpoints validate their input.** An unknown WAF mode (which the
+  WAF treated as log mode, blocking nothing), unknown sensitivity,
+  non-positive window, route without a leading `/` or with an unmatchable
+  pattern, unknown severity, or unknown custom-rule action now returns 400
+  instead of being stored or silently skipped. A partial WAF update no
+  longer resets the whole rule set. The WAF and rate-limit endpoints return
+  409 when that feature isn't enabled.
+- **`ValidateConfig`** reports an unknown `WAF.Mode` (error — nothing is
+  blocked), unknown `WAF.Rules` levels, unknown custom-rule `Action`,
+  unknown `RateLimit.Strategy`, and the deprecated `AI.DailySummary`.
+
+### Deprecated
+
+- **`AIConfig.DailySummary`** never did anything: nothing runs on a
+  schedule, and the daily summary is generated on demand from the
+  dashboard. `ValidateConfig` now warns when it is set.
+
 ### 🔥 Fix
 
 - **SQLite / Postgres `ListUsers`, `GetAttackTrends`, `GetGeoStats`, and
@@ -64,6 +111,13 @@ how far that data can be trusted.
   `AuditRetentionDays`. Budget for the extra rows on SQLite.
 - With `UserExtractor` set, every authenticated request writes an activity
   row, alongside the per-request performance row Sentinel already writes.
+- Rate limits are now a true sliding window by default: bursts straddling a
+  window boundary are limited, and rejected requests no longer count
+  against the client. Set `Strategy: sentinel.FixedWindow` for the old
+  behavior. Rate-limit state (`GET /api/rate-limits/current`) now includes
+  each counter's `limit` and `remaining`.
+- Setting a `WAF.Rules` category to `off`, `low`, or `medium` now changes
+  what the WAF detects.
 
 ## [2.2.2] - 2026-09-11
 

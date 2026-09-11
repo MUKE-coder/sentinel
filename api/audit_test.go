@@ -10,6 +10,7 @@ import (
 
 	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 	"github.com/MUKE-coder/sentinel/v2/intelligence"
+	"github.com/MUKE-coder/sentinel/v2/middleware"
 	"github.com/MUKE-coder/sentinel/v2/pipeline"
 	"github.com/MUKE-coder/sentinel/v2/storage/memory"
 	"github.com/gin-gonic/gin"
@@ -46,6 +47,7 @@ func newAuditTestServer(t *testing.T, cfg sentinel.Config) (*gin.Engine, *pipeli
 	cfg.Dashboard.Password = "correct-horse"
 	cfg.Dashboard.SecretKey = "test-secret"
 	srv := NewServer(store, pipe, ipMgr, nil, cfg)
+	srv.SetWAF(middleware.NewWAF(cfg.WAF, store, pipe, nil))
 	r := gin.New()
 	srv.RegisterRoutes(r, "/sentinel")
 

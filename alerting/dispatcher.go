@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sentinel "github.com/MUKE-coder/sentinel/v2/core"
@@ -31,16 +32,31 @@ type Dispatcher struct {
 	maxRetries  int
 	history     []*sentinel.AlertHistory
 	historyMu   sync.RWMutex
+	minSeverity atomic.Value // sentinel.Severity; changeable at runtime
 }
 
 // NewDispatcher creates a new alert dispatcher.
 func NewDispatcher(config sentinel.AlertConfig) *Dispatcher {
-	return &Dispatcher{
+	d := &Dispatcher{
 		config:      config,
 		dedup:       make(map[string]time.Time),
 		dedupWindow: 5 * time.Minute,
 		maxRetries:  3,
 	}
+	d.minSeverity.Store(config.MinSeverity)
+	return d
+}
+
+// SetMinSeverity changes the lowest severity alerted on, for every
+// subsequent threat. The dashboard's alert settings call it; before v2.3.0
+// those edits changed only the API server's copy of the config.
+func (d *Dispatcher) SetMinSeverity(sev sentinel.Severity) {
+	d.minSeverity.Store(sev)
+}
+
+// MinSeverity returns the lowest severity currently alerted on.
+func (d *Dispatcher) MinSeverity() sentinel.Severity {
+	return d.minSeverity.Load().(sentinel.Severity)
 }
 
 // AddProvider registers an alert provider.
@@ -187,7 +203,7 @@ func (d *Dispatcher) meetsSeverityThreshold(sev sentinel.Severity) bool {
 		sentinel.SeverityHigh:     3,
 		sentinel.SeverityCritical: 4,
 	}
-	return order[sev] >= order[d.config.MinSeverity]
+	return order[sev] >= order[d.MinSeverity()]
 }
 
 // ProviderCount returns the number of registered providers.
