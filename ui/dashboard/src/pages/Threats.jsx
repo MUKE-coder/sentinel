@@ -40,7 +40,7 @@ export default function Threats() {
   useEffect(() => { loadThreats(); }, [loadThreats]);
   useEffect(() => {
     if (lastMessage?.type === 'threat') loadThreats();
-  }, [lastMessage]);
+  }, [lastMessage, loadThreats]);
 
   // Load actor profile when selecting a threat
   const handleSelect = async (threat) => {

@@ -268,11 +268,11 @@ export default function TheDashboard() {
 
       <h3 id="page-ip-management">IP Management</h3>
       <p>
-        The IP Management page provides a unified interface for managing your whitelist and
-        blacklist. You can add individual IP addresses or CIDR ranges (e.g.,{' '}
-        <code>10.0.0.0/8</code>, <code>192.168.1.0/24</code>). Each entry supports an optional
-        note describing why the IP was listed. Whitelisted IPs bypass all security checks including
-        the WAF and rate limiting.
+        The IP Management page blocks and unblocks IP addresses and CIDR ranges (e.g.,{' '}
+        <code>10.0.0.0/8</code>, <code>192.168.1.0/24</code>). Each block has a reason and a
+        lifetime you choose: 1 hour, 24 hours, 7 days, 30 days, or permanent. Blocks are enforced
+        whether or not the WAF is enabled, and every block and unblock is audited. To exempt
+        addresses from inspection instead, use <code>WAF.ExcludeIPs</code> in your config.
       </p>
 
       {/* ------------------------------------------------------------------ */}
@@ -281,11 +281,16 @@ export default function TheDashboard() {
 
       <h3 id="page-waf">WAF</h3>
       <p>
-        The WAF page shows the running WAF's mode and each built-in category's strictness level,
-        lets you create and delete custom rules (including log-only rules for staging), and tests
-        arbitrary input against the patterns to see what would match. The mode and strictness levels
-        are changed through <code>PUT /sentinel/api/waf/rules</code>; changes apply to live requests,
-        are audited, and last until the next restart.
+        The WAF page switches the running WAF between <strong>log</strong>, <strong>block</strong>,
+        and <strong>challenge</strong> mode. It also sets each built-in category&apos;s sensitivity:
+        off, low, medium, or strict. These changes go through{' '}
+        <code>PUT /sentinel/api/waf/rules</code>. They apply to live requests immediately, are
+        audited, and last until the next restart. When <code>WAF.Enabled</code> is false, the
+        controls are disabled, because there is no running WAF to change.
+      </p>
+      <p>
+        The page also creates and deletes custom rules, including log-only rules for staging. It can
+        test any input against the patterns to show what would match.
       </p>
 
       {/* ------------------------------------------------------------------ */}
@@ -427,10 +432,17 @@ export default function TheDashboard() {
 
       <h3 id="page-audit">Audit Log</h3>
       <p>
-        The Audit Log page provides a complete trail of all administrative and security actions.
-        This includes dashboard logins, IP whitelist/blacklist changes, threat resolutions,
-        WAF rule modifications, rate limit resets, and report generations. Each entry records the
-        action, the actor (dashboard user or system), a timestamp, and relevant metadata.
+        The Audit Log page is the trail of administrative and security actions: dashboard logins,
+        IP blocks and unblocks, threat resolutions, WAF and rate-limit changes, and report
+        generations. Each entry records the action, the actor (dashboard user or system), a
+        timestamp, and the values before and after.
+      </p>
+      <p>
+        <strong>Verify integrity</strong> recomputes every entry&apos;s hash chain on the server (
+        <code>GET /sentinel/api/audit-logs/verify</code>). It lists entries that were modified,
+        deleted, or relinked. An entry&apos;s detail view shows its chain position and hashes. Set{' '}
+        <code>Storage.AuditKey</code> so that someone with database access can&apos;t rewrite
+        entries and recompute the chain.
       </p>
 
       {/* ------------------------------------------------------------------ */}

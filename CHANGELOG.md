@@ -2,7 +2,7 @@
 
 All notable changes to Sentinel are documented here.
 
-## [2.4.0] - Unreleased
+## [2.4.0] - 2026-09-11
 
 ### Added
 
@@ -72,6 +72,16 @@ All notable changes to Sentinel are documented here.
 - `examples/scan-target` and `security/scan/docker-compose.yml`: a
   deliberately injectable app behind Sentinel, plus OWASP ZAP and sqlmap
   services, for scanning with the WAF off and then on.
+- **Dashboard controls for v2.3/v2.4 features.**
+  - The WAF page switches the running WAF between log, block, and challenge
+    and sets each category's sensitivity (off, low, medium, strict) through
+    `PUT /api/waf/rules`. Before, it only showed the values.
+  - The IP Management page asks how long a block lasts (1 hour to 30 days,
+    or permanent). Before, every dashboard block silently got the 24-hour
+    default.
+  - The Audit page has a **Verify integrity** button that runs
+    `GET /api/audit-logs/verify` and lists modified, missing, and relinked
+    entries. Each entry's detail shows its chain position and hashes.
 
 ### 🔥 Fix
 
