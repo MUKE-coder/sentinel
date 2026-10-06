@@ -110,8 +110,10 @@ func TestCorpus(t *testing.T) {
 	// measured results; tighten them when patterns improve. The false
 	// positives left at "defaults" are inputs no pattern can tell from an
 	// attack: SQL quoted in prose, a whole-value hex id, "../" in a search,
-	// an encoded <script> tag, and absolute URLs in callback parameters
-	// (Sentinel doesn't know your own host).
+	// an encoded <script> tag, and absolute URLs in callback parameters.
+	// The corpus runs with no configuration; the two callback samples stop
+	// being flagged once an application lists its hosts in
+	// WAFConfig.AllowedRedirectHosts (see TestFilterRedirects).
 	type bound struct{ maxFP, minDetected int }
 	bounds := map[string]bound{
 		"low":      {maxFP: 7, minDetected: 41},

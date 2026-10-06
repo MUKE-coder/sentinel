@@ -173,6 +173,24 @@ func ValidateConfig(config Config) []ConfigIssue {
 	validateRoutePatterns(report, "WAF.ExcludeRoutes", config.WAF.ExcludeRoutes)
 	validateCustomRules(report, config.WAF.CustomRules)
 
+	for i, host := range config.WAF.AllowedRedirectHosts {
+		field := fmt.Sprintf("WAF.AllowedRedirectHosts[%d]", i)
+		switch {
+		case strings.TrimSpace(host) == "":
+			report(IssueWarning, field, "is empty and is ignored")
+		case strings.Contains(host, "://"), strings.Contains(host, "/"):
+			report(IssueError, field,
+				"%q is a URL, not a host — write \"example.com\" or \"*.example.com\", or the host never matches and legitimate redirects keep being reported", host)
+		case strings.HasPrefix(host, "*") && !strings.HasPrefix(host, "*."):
+			report(IssueError, field,
+				"%q is not a usable wildcard — write \"*.example.com\" to match subdomains", host)
+		}
+	}
+	if len(config.WAF.AllowedRedirectHosts) > 0 && config.WAF.Rules.OpenRedirect == core.RuleOff {
+		report(IssueWarning, "WAF.AllowedRedirectHosts",
+			"is set while WAF.Rules.OpenRedirect is off, so it does nothing — open redirects are not reported at all")
+	}
+
 	// --- Rate limiting ---
 	if config.RateLimit.Enabled {
 		if config.RateLimit.ByIP == nil && config.RateLimit.ByUser == nil &&

@@ -114,6 +114,7 @@ func (w *WAF) build(config sentinel.WAFConfig, store storage.Store, pipe *pipeli
 	for _, ip := range config.ExcludeIPs {
 		excludeIPSet[ip] = true
 	}
+	redirectAllow := detection.NewRedirectAllowlist(config.AllowedRedirectHosts)
 
 	return func(c *gin.Context) {
 		if !config.Enabled {
@@ -200,8 +201,11 @@ func (w *WAF) build(config sentinel.WAFConfig, store storage.Store, pipe *pipeli
 		}
 
 		// Classify and score. Built-in matches are filtered by the current
-		// per-category sensitivity (WAF.Rules), which the dashboard can change.
+		// per-category sensitivity (WAF.Rules), which the dashboard can change,
+		// and then by the hosts this application owns: a redirect to one of
+		// those is a callback, not an open redirect.
 		matches := detection.ApplySensitivity(detection.ClassifyRequest(inspected), w.Rules())
+		matches = detection.FilterRedirects(matches, inspected, redirectAllow)
 
 		// Also check custom rules if engine is available
 		if customRuleEngine != nil {

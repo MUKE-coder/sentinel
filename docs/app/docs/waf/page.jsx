@@ -285,7 +285,7 @@ Content-Type: application/json
             <td>Open Redirect</td>
             <td><code>OpenRedirect</code></td>
             <td><code>RuleMedium</code></td>
-            <td>Detects open redirect attempts via URL parameters containing external URLs or protocol-relative URLs (<code>//evil.com</code>).</td>
+            <td>Detects open redirect attempts: a redirect parameter (<code>redirect</code>, <code>return</code>, <code>next</code>, <code>url</code>, <code>callback</code>, <code>continue</code>, <code>goto</code> and similar) holding an absolute or protocol-relative URL (<code>//evil.com</code>). List your own hosts in <code>AllowedRedirectHosts</code> so your callbacks aren&apos;t reported.</td>
           </tr>
         </tbody>
       </table>
@@ -694,7 +694,10 @@ Content-Type: application/json
           <li>a hex id that is the whole value</li>
           <li><code>../</code> in a search</li>
           <li>an encoded <code>&lt;script&gt;</code> tag</li>
-          <li>absolute URLs in callback parameters (Sentinel doesn&apos;t know your own host)</li>
+          <li>
+            absolute URLs in callback parameters — unless you list your hosts in{' '}
+            <code>AllowedRedirectHosts</code>, which Sentinel cannot know on its own
+          </li>
         </ul>
         <p>
           Run in <code>ModeLog</code> first and review the Threats page before switching to{' '}

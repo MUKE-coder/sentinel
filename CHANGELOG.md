@@ -30,6 +30,17 @@ All notable changes to Sentinel are documented here.
   response, naming that it applies to that instance only, instead of looking
   permanent.
 
+- **`WAF.AllowedRedirectHosts`: your own callbacks are no longer reported as
+  open redirects.** An absolute URL in a redirect parameter is the shape of
+  the attack and the shape of an ordinary OAuth callback, and Sentinel cannot
+  know your hostnames, so it reported both — two of the nine false positives
+  in the detection corpus are exactly this. List the hosts you own
+  (`example.com`, or `*.example.com` for subdomains) and a redirect to one
+  of them passes, while a redirect anywhere else is still reported. A
+  request that carries even one outside target, or a target Sentinel cannot
+  parse, keeps its finding. `ValidateConfig` rejects entries written as URLs
+  and warns when the list is set while the rule is off.
+
 ### Behavior changes
 
 - **Stored dashboard settings win over the values in `Config`**, including
