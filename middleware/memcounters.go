@@ -24,6 +24,7 @@ type MemoryCounterStore struct {
 }
 
 var _ sentinel.CounterStore = (*MemoryCounterStore)(nil)
+var _ sentinel.UsageTaker = (*MemoryCounterStore)(nil)
 
 // NewMemoryCounterStore creates an in-process store. A background goroutine
 // drops expired counters every 30 seconds until Close is called.
@@ -329,4 +330,32 @@ func (e counterEntry) usageAt(strategy sentinel.RateLimitStrategy, now time.Time
 		u.WindowEnd = e.windowEnd
 	}
 	return u
+}
+
+// TakeUsage implements sentinel.UsageTaker: it takes and reports usage under
+// one lock, so a caller that needs both doesn't have to ask twice.
+func (s *MemoryCounterStore) TakeUsage(_ context.Context, key string, limit int, window time.Duration, strategy sentinel.RateLimitStrategy, now time.Time) (bool, sentinel.CounterUsage, error) {
+	if window <= 0 {
+		return true, sentinel.CounterUsage{}, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	e := s.entries[key]
+	if e == nil {
+		e = &counterEntry{}
+		s.entries[key] = e
+	}
+	e.limit, e.window = limit, window
+
+	var allowed bool
+	switch strategy {
+	case sentinel.FixedWindow:
+		allowed = e.takeFixed(now)
+	case sentinel.TokenBucket:
+		allowed = e.takeToken(now)
+	default:
+		allowed = e.takeSliding(now)
+	}
+	return allowed, e.usageAt(strategy, now), nil
 }

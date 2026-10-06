@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 	"github.com/MUKE-coder/sentinel/v2/alerting"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 	"github.com/MUKE-coder/sentinel/v2/pipeline"
 )
 

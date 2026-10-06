@@ -119,6 +119,36 @@ func (rl *RateLimiter) remaining(key string, limit int) int {
 	if err != nil || !ok {
 		return limit
 	}
+	return remainingFrom(u, limit)
+}
+
+// take counts one request against key and reports both whether it is allowed
+// and how much of limit is left, for the dimensions that publish
+// X-RateLimit-Remaining. A store implementing sentinel.UsageTaker answers
+// both in one round trip; any other store is asked twice, as before.
+func (rl *RateLimiter) take(key string, limit int, window time.Duration) (bool, int) {
+	if window <= 0 {
+		// A non-positive window never accumulates anything; ValidateConfig
+		// reports it.
+		return true, limit
+	}
+	taker, ok := rl.store.(sentinel.UsageTaker)
+	if !ok {
+		return rl.check(key, limit, window), rl.remaining(key, limit)
+	}
+
+	strategy := rl.Strategy()
+	allowed, u, err := taker.TakeUsage(context.Background(), counterPrefix(strategy)+key, limit, window, strategy, rl.now())
+	if err != nil {
+		// Fail open, like check: a counter store outage must not take the
+		// application down with it.
+		rl.errLog.log("rate limit counter store: %v (requests allowed until it recovers)", err)
+		return true, limit
+	}
+	return allowed, remainingFrom(u, limit)
+}
+
+func remainingFrom(u sentinel.CounterUsage, limit int) int {
 	return max(limit-int(math.Ceil(u.Used)), 0)
 }
 
@@ -313,10 +343,12 @@ func RateLimitMiddleware(config sentinel.RateLimitConfig, limiter *RateLimiter, 
 			}
 		}
 
-		// IP rate limit
+		// IP rate limit. This dimension publishes the remaining budget, so it
+		// takes and reads usage in one call where the store supports it.
 		if config.ByIP != nil {
 			key := "ip:" + clientIP
-			if !limiter.check(key, config.ByIP.Requests, config.ByIP.Window) {
+			allowed, rem := limiter.take(key, config.ByIP.Requests, config.ByIP.Window)
+			if !allowed {
 				emitRateLimitEvent(pipe, clientIP, path, c, "ip")
 				retryAfter := int(config.ByIP.Window.Seconds())
 				c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -328,7 +360,6 @@ func RateLimitMiddleware(config sentinel.RateLimitConfig, limiter *RateLimiter, 
 				})
 				return
 			}
-			rem := limiter.remaining(key, config.ByIP.Requests)
 			c.Header("X-RateLimit-Limit", strconv.Itoa(config.ByIP.Requests))
 			c.Header("X-RateLimit-Remaining", strconv.Itoa(rem))
 		}

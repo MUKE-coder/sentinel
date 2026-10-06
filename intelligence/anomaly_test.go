@@ -240,7 +240,7 @@ func TestAnomalyDetector_NewCountry(t *testing.T) {
 		Path:      "/api/data",
 		Method:    "GET",
 		IP:        "203.0.113.1", // External IP
-		Country:   "RU",         // Different country
+		Country:   "RU",          // Different country
 	}
 
 	err := detector.CheckActivity(ctx, activity)

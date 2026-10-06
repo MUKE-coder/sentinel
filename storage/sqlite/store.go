@@ -189,8 +189,8 @@ type whitelistedIPRow struct {
 func (whitelistedIPRow) TableName() string { return "sentinel_whitelisted_ips" }
 
 type securityScoreRow struct {
-	ID        uint      `gorm:"primaryKey;autoIncrement"`
-	Score     string    `gorm:"column:score"` // JSON blob
+	ID         uint      `gorm:"primaryKey;autoIncrement"`
+	Score      string    `gorm:"column:score"` // JSON blob
 	ComputedAt time.Time `gorm:"index;column:computed_at"`
 }
 
@@ -1137,4 +1137,17 @@ func percentile(sorted []int64, p int) int64 {
 		idx = len(sorted) - 1
 	}
 	return sorted[idx]
+}
+
+// ListWhitelistedIPs implements storage.WhitelistLister.
+func (s *Store) ListWhitelistedIPs(ctx context.Context) ([]*sentinel.WhitelistedIP, error) {
+	var rows []whitelistedIPRow
+	if err := s.db.WithContext(ctx).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*sentinel.WhitelistedIP, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, &sentinel.WhitelistedIP{IP: row.IP, WhitelistAt: row.WhitelistAt})
+	}
+	return result, nil
 }

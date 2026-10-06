@@ -70,11 +70,11 @@ var (
 type AnomalyCheckType string
 
 const (
-	CheckImpossibleTravel  AnomalyCheckType = "impossible_travel"
-	CheckUnusualAccess     AnomalyCheckType = "unusual_access"
-	CheckDataExfiltration  AnomalyCheckType = "data_exfiltration"
-	CheckOffHoursAccess    AnomalyCheckType = "off_hours_access"
-	CheckVelocityAnomaly   AnomalyCheckType = "velocity_anomaly"
+	CheckImpossibleTravel   AnomalyCheckType = "impossible_travel"
+	CheckUnusualAccess      AnomalyCheckType = "unusual_access"
+	CheckDataExfiltration   AnomalyCheckType = "data_exfiltration"
+	CheckOffHoursAccess     AnomalyCheckType = "off_hours_access"
+	CheckVelocityAnomaly    AnomalyCheckType = "velocity_anomaly"
 	CheckCredentialStuffing AnomalyCheckType = "credential_stuffing"
 )
 

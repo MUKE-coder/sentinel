@@ -2,6 +2,43 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.5.1] - Unreleased
+
+### 🔥 Fix
+
+- **Whitelisted IPs were forgotten on restart and never shared between
+  replicas.** Whitelist entries were written to storage but only ever held in
+  the memory of the process that added them: after a restart every
+  whitelisted IP silently went back to being inspected, and an entry added on
+  one replica never applied on the others. The cache is now rebuilt from
+  storage, through the new optional `storage.WhitelistLister` (the memory,
+  SQLite, and Postgres stores implement it; a custom `Store` that doesn't
+  keeps the old behavior).
+- **A block made on one replica took up to 30 seconds to apply on the
+  others.** The IP cache now refreshes every 5 seconds
+  (`intelligence.DefaultSyncInterval`), and `NewIPManagerWithSync` sets the
+  interval. The replica that makes the block still applies it immediately.
+- A failed read of the blocked-IP list no longer skips the whitelist refresh.
+
+### Changed
+
+- **One Redis round trip per rate-limited request instead of two.** The IP
+  rate limit publishes `X-RateLimit-Remaining`, which meant asking the
+  counter store for the decision and then for the usage. A store can now
+  answer both at once (`sentinel.UsageTaker`); `redisstore` returns the
+  counter state from the decision script, and the in-memory store does it
+  under one lock. Package `countertest` checks that a store's combined answer
+  matches taking and then reading usage, so the header can't depend on which
+  store is configured.
+- **The dashboard's initial download is about 240 KB instead of 720 KB.**
+  Every page past the login screen is loaded on demand, and React and the
+  charting library are separate chunks, so the two pages with charts are the
+  only ones that download the 290 KB of chart code — and a dashboard update
+  no longer invalidates the cached React chunk. This also clears the bundle
+  size warning in the dashboard build.
+- gofmt across the tree: 18 files had drifted (import order, field
+  alignment). No behavior change.
+
 ## [2.5.0] - 2026-09-11
 
 ### Added
