@@ -4,10 +4,10 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
 [![Release](https://img.shields.io/badge/Release-v2.6.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
-[![Tests](https://img.shields.io/badge/Tests-17%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
+[![Tests](https://img.shields.io/badge/Tests-18%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
-[![Dashboard Pages](https://img.shields.io/badge/Dashboard-13%20pages-purple)](https://github.com/MUKE-coder/sentinel)
-[![API Endpoints](https://img.shields.io/badge/API-40%2B%20endpoints-yellow)](https://github.com/MUKE-coder/sentinel)
+[![Dashboard Pages](https://img.shields.io/badge/Dashboard-15%20pages-purple)](https://github.com/MUKE-coder/sentinel)
+[![API Endpoints](https://img.shields.io/badge/API-50%2B%20endpoints-yellow)](https://github.com/MUKE-coder/sentinel)
 
 Production-grade security intelligence SDK for Go applications. Drop-in middleware for [Gin](https://github.com/gin-gonic/gin) that provides WAF protection, rate limiting, threat detection, audit logging, anomaly detection, AI-powered analysis, and an embedded React dashboard — all mountable with a single function call.
 
