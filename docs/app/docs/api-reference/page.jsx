@@ -188,7 +188,7 @@ export default function ApiReference() {
       <Endpoints
         rows={[
           ['GET', '/api/waf/rules', <>The running WAF's <code>mode</code> and per-category <code>rules</code> (sensitivity levels), and whether the WAF is <code>enabled</code>.</>],
-          ['PUT', '/api/waf/rules', <>Change the running WAF: body <code>{'{"mode":"block","rules":{"SQLInjection":"strict"}}'}</code>. Rule fields you omit keep their value. Invalid mode or level → 400; WAF disabled → 409 <code>WAF_DISABLED</code>. Applies immediately, not persisted across restart. Audited.</>],
+          ['PUT', '/api/waf/rules', <>Change the running WAF: body <code>{'{"mode":"block","rules":{"SQLInjection":"strict"}}'}</code>. Rule fields you omit keep their value. Invalid mode or level → 400; WAF disabled → 409 <code>WAF_DISABLED</code>. Applies immediately, and is stored so it survives a restart and reaches every replica (v2.6.0+); the response carries a <code>warning</code> when it could not be stored. Audited.</>],
           ['GET', '/api/waf/custom-rules', 'All custom rules.'],
           ['POST', '/api/waf/custom-rules', <>Add a custom rule: <code>id</code>, <code>name</code>, <code>pattern</code>, <code>applies_to</code>, <code>severity</code>, <code>action</code> (<code>block</code> or <code>log</code>), <code>enabled</code>. Invalid regex or action → 400. Audited.</>],
           ['DELETE', '/api/waf/custom-rules/:id', 'Remove a custom rule. Audited.'],
@@ -215,7 +215,7 @@ curl -X POST http://localhost:8080/sentinel/api/waf/test \\
       <Endpoints
         rows={[
           ['GET', '/api/rate-limits', <>Configuration in effect: <code>enabled</code>, <code>strategy</code>, <code>by_ip</code>, <code>by_user</code>, <code>global</code>, and the live <code>by_route</code> table.</>],
-          ['PUT', '/api/rate-limits', <>Change route limits on the running limiter: body <code>{'{"by_route":{"/api/search":{"requests":10,"window":"1m"}}}'}</code>. <code>requests: 0</code> removes a route's limit. Every entry is validated first and the update is all-or-nothing (400 on a bad window, missing leading <code>/</code>, or unmatchable pattern); rate limiting disabled → 409 <code>RATE_LIMIT_DISABLED</code>. Not persisted across restart. Audited.</>],
+          ['PUT', '/api/rate-limits', <>Change route limits on the running limiter: body <code>{'{"by_route":{"/api/search":{"requests":10,"window":"1m"}}}'}</code>. <code>requests: 0</code> removes a route's limit. Every entry is validated first and the update is all-or-nothing (400 on a bad window, missing leading <code>/</code>, or unmatchable pattern); rate limiting disabled → 409 <code>RATE_LIMIT_DISABLED</code>. Stored like the WAF settings (v2.6.0+), with a <code>warning</code> in the response when it could not be. Audited.</>],
           ['GET', '/api/rate-limits/current', <>Active counters: <code>key</code>, <code>count</code> (usage now), <code>limit</code>, <code>remaining</code>, <code>window_end</code>.</>],
           ['POST', '/api/rate-limits/reset/:key', 'Delete one counter so the client can send again immediately. Audited.'],
         ]}
@@ -240,10 +240,33 @@ curl -X POST http://localhost:8080/sentinel/api/waf/test \\
       <Endpoints
         rows={[
           ['GET', '/api/alerts/config', 'The alert threshold in effect and which channels are configured (URLs masked).'],
-          ['PUT', '/api/alerts/config', <>Change the running dispatcher's threshold: <code>{'{"min_severity":"High"}'}</code> (<code>Low</code>, <code>Medium</code>, <code>High</code>, <code>Critical</code>; any case). Unknown value → 400. Not persisted across restart. Audited.</>],
+          ['PUT', '/api/alerts/config', <>Change the running dispatcher's threshold: <code>{'{"min_severity":"High"}'}</code> (<code>Low</code>, <code>Medium</code>, <code>High</code>, <code>Critical</code>; any case). Unknown value → 400. Stored like the WAF settings (v2.6.0+). Audited.</>],
           ['POST', '/api/alerts/test', 'Report how many providers are configured (does not deliver an alert).'],
           ['GET', '/api/alerts/history', 'The last 1,000 delivery attempts with channel, outcome, and error.'],
         ]}
+      />
+
+      {/* ------------------------------------------------------------------ */}
+      <h2 id="settings">Dashboard Settings</h2>
+      <p>
+        The WAF mode and sensitivity, custom rules, route rate limits, and the alert threshold are
+        stored when you change them, so they survive a restart and reach every replica within{' '}
+        <code>Storage.SyncInterval</code>. Stored settings win over the values in your{' '}
+        <code>Config</code>: these endpoints show which is in force and discard the stored ones.
+        (v2.6.0+)
+      </p>
+      <Endpoints
+        rows={[
+          ['GET', '/api/settings/live', <>What is stored (<code>stored</code>, <code>null</code> when your config is in force), what your config asked for (<code>configured</code>), whether the storage backend can keep settings (<code>persistable</code>), and the poll interval (<code>sync_interval</code>).</>],
+          ['DELETE', '/api/settings/live', <>Discard the stored settings and put the configured values back — here at once, on the other replicas at their next poll. 409 <code>SETTINGS_NOT_PERSISTABLE</code> when the storage backend cannot keep settings. Audited.</>],
+        ]}
+      />
+      <CodeBlock
+        language="bash"
+        filename="Go back to the settings in your config"
+        showLineNumbers={false}
+        code={`curl -X DELETE http://localhost:8080/sentinel/api/settings/live \
+  -H "Authorization: Bearer $TOKEN"`}
       />
 
       {/* ------------------------------------------------------------------ */}

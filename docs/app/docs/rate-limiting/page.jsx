@@ -540,9 +540,11 @@ Global: &sentinel.Limit{Requests: 5000, Window: time.Minute}`}
         Changes made through the dashboard (editing route limits, resetting counters) take effect on
         live requests immediately. Edits are validated — a non-positive window, a route without a
         leading <code>/</code>, or an unmatchable pattern is rejected with 400 and nothing changes —
-        and every change is written to the audit log. Route-limit edits are not persisted: a restart
-        goes back to your configured <code>ByRoute</code>. (Before v2.3.0, route-limit edits updated
-        only the dashboard's copy of the config and were never enforced.)
+        and every change is written to the audit log. Since v2.6.0 a route-limit edit is also stored,
+        so it survives a restart and reaches every replica within <code>Storage.SyncInterval</code>;
+        the response carries a <code>warning</code> when the storage backend could not keep it.
+        (Before v2.3.0, route-limit edits updated only the dashboard's copy of the config and were
+        never enforced.)
       </Callout>
 
       {/* ------------------------------------------------------------------ */}
@@ -701,13 +703,14 @@ sentinel.Mount(r, nil, sentinel.Config{
             </td>
           </tr>
           <tr>
-            <td><strong>Dashboard edits are not persisted</strong></td>
+            <td><strong>Dashboard edits win over your config</strong></td>
             <td>
-              Route limits changed from the dashboard apply until the next restart, then the
-              configured <code>ByRoute</code> takes over again.
+              Since v2.6.0 a route limit changed from the dashboard is stored and keeps applying
+              after a restart — including after a deploy that changes <code>ByRoute</code> in code.
             </td>
             <td>
-              Copy a limit you want to keep into your config.
+              <code>DELETE /sentinel/api/settings/live</code> discards the stored settings and puts
+              your configured values back on every replica.
             </td>
           </tr>
         </tbody>

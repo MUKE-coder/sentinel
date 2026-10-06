@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/MUKE-coder/sentinel/v2/core"
 	"github.com/MUKE-coder/sentinel/v2/detection"
@@ -116,6 +117,14 @@ func ValidateConfig(config Config) []ConfigIssue {
 	} else if config.Storage.AuditRetentionDays < 365 {
 		report(IssueWarning, "Storage.AuditRetentionDays",
 			"%d days of audit history is below the 12 months PCI-DSS 10.5.1 requires", config.Storage.AuditRetentionDays)
+	}
+
+	if config.Storage.SyncInterval < 0 {
+		report(IssueWarning, "Storage.SyncInterval",
+			"is negative, so this replica never polls storage: IP blocks, whitelist entries, and dashboard setting changes made on another replica will not apply here until it restarts")
+	} else if config.Storage.SyncInterval > time.Minute {
+		report(IssueWarning, "Storage.SyncInterval",
+			"is %s — a block or setting changed on another replica takes that long to apply here", config.Storage.SyncInterval)
 	}
 
 	if key := config.Storage.AuditKey; key != "" && len(key) < 16 {

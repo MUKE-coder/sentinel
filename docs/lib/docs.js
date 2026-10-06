@@ -71,5 +71,5 @@ export const searchIndex = [
   { title: 'Audit Logging', href: '/docs/audit-logging', content: 'Audit logging GORM plugin database changes create update delete tracking request context user attribution', section: 'Data' },
   { title: 'AI Analysis', href: '/docs/ai-analysis', content: 'AI analysis Claude OpenAI Gemini threat analysis actor assessment natural language query daily summary WAF recommendations provider', section: 'Data' },
   { title: 'Compliance Reports', href: '/docs/compliance-reports', content: 'Compliance reports GDPR PCI-DSS SOC2 data protection audit evidence regulatory', section: 'Data' },
-  { title: 'API Reference', href: '/docs/api-reference', content: 'API reference REST endpoints authentication JWT threats actors IP lists WAF rules rate limits AI analytics reports WebSocket', section: 'Reference' },
+  { title: 'API Reference', href: '/docs/api-reference', content: 'API reference REST endpoints authentication JWT threats actors IP lists WAF rules rate limits AI analytics reports WebSocket dashboard settings live stored configured persistable sync interval reset', section: 'Reference' },
 ];

@@ -479,6 +479,48 @@ export default function TheDashboard() {
       </p>
 
       {/* ------------------------------------------------------------------ */}
+      {/*  SETTINGS YOU CHANGE HERE                                           */}
+      {/* ------------------------------------------------------------------ */}
+
+      <h2 id="settings-persistence">Settings You Change Here</h2>
+      <p>
+        Four things can be changed from the dashboard rather than in code: the WAF&apos;s mode and
+        sensitivity, its custom rules, the per-route rate limits, and the alert threshold. Since
+        v2.6.0 each change is stored, so it:
+      </p>
+      <ul>
+        <li>survives a restart or a deploy</li>
+        <li>
+          reaches every other replica within <code>Storage.SyncInterval</code> (5 seconds by
+          default)
+        </li>
+      </ul>
+      <p>
+        Before v2.6.0 a change applied only to the instance that happened to serve the request, so
+        it was lost on the next restart and, behind a load balancer, the dashboard showed one value
+        while the other replicas enforced another.
+      </p>
+      <Callout type="warning" title="Stored settings win over your config">
+        <p>
+          Once something is changed here, that value keeps applying — even after a deploy that sets
+          a different value in code. This is deliberate: an incident response made at 3am shouldn&apos;t
+          be undone by the next deploy.
+        </p>
+        <p>
+          To hand control back to your <code>Config</code>, discard the stored settings:{' '}
+          <code>DELETE /sentinel/api/settings/live</code>. Every replica picks that up on its next
+          poll. <code>GET /sentinel/api/settings/live</code> shows what is stored next to what your
+          config asked for.
+        </p>
+      </Callout>
+      <p>
+        Each change is written to the audit log with the user, the old value, and the new one. If
+        the storage backend can&apos;t keep settings, the change still applies to the instance you
+        are talking to and the response carries a <code>warning</code> saying so — it won&apos;t
+        look permanent when it isn&apos;t.
+      </p>
+
+      {/* ------------------------------------------------------------------ */}
       {/*  CUSTOMIZING THE PREFIX                                             */}
       {/* ------------------------------------------------------------------ */}
 

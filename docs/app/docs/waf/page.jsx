@@ -161,7 +161,7 @@ func main() {
         Any other value — including a typo such as <code>"Block"</code> — falls through to log mode
         and blocks nothing. <code>ValidateConfig</code> reports it as an error, and the dashboard API
         rejects it. The mode can be changed on the running WAF with{' '}
-        <code>PUT /sentinel/api/waf/rules</code> (since v2.3.0; not persisted across a restart).
+        <code>PUT /sentinel/api/waf/rules</code> (since v2.3.0). Since v2.6.0 the change is stored: it survives a restart and reaches every replica within <code>Storage.SyncInterval</code>.
       </p>
 
       <h3>ModeLog (Detect Only)</h3>

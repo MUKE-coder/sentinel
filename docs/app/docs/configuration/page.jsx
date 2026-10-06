@@ -379,6 +379,12 @@ Dashboard: sentinel.DashboardConfig{
             <td>HMAC key for the audit log's hash chain. Without it the chain is plain SHA-256; with it, rewriting entries undetectably requires the key. Keep it outside the database and stable. (v2.4.0+; see <a href="/docs/audit-logging#retention">Audit Logging</a>.)</td>
           </tr>
           <tr>
+            <td><code>SyncInterval</code></td>
+            <td><code>time.Duration</code></td>
+            <td><code>5s</code></td>
+            <td>How often this replica picks up changes made elsewhere: IP blocks and whitelist entries written by another replica, and dashboard setting changes. A negative value turns polling off, so this process only sees its own changes. (v2.6.0+)</td>
+          </tr>
+          <tr>
             <td><code>MaxOpenConns</code></td>
             <td><code>int</code></td>
             <td><code>10</code></td>
