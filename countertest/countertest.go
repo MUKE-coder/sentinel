@@ -44,6 +44,54 @@ func Run(t *testing.T, newStore func(t *testing.T) sentinel.CounterStore) {
 		return allowed
 	}
 
+	// A store may also implement sentinel.UsageTaker, reporting usage as part
+	// of the take so a limiter needs one round trip instead of two. Its
+	// answers must match Take followed by Usage exactly, or
+	// X-RateLimit-Remaining would depend on which store is configured.
+	t.Run("TakeUsageMatchesTakeThenUsage", func(t *testing.T) {
+		taker, ok := newStore(t).(sentinel.UsageTaker)
+		if !ok {
+			t.Skip("store does not implement sentinel.UsageTaker")
+		}
+		s := taker.(sentinel.CounterStore)
+		const limit = 3
+		w := time.Minute
+		for _, strategy := range []sentinel.RateLimitStrategy{sentinel.SlidingWindow, sentinel.FixedWindow, sentinel.TokenBucket} {
+			t.Run(string(strategy), func(t *testing.T) {
+				combined, separate := "combined:"+string(strategy), "separate:"+string(strategy)
+				for i := 0; i < limit+2; i++ {
+					at := base.Add(time.Duration(i) * time.Second)
+
+					gotAllowed, gotUsage, err := taker.TakeUsage(ctx, combined, limit, w, strategy, at)
+					if err != nil {
+						t.Fatalf("TakeUsage: %v", err)
+					}
+					wantAllowed, err := s.Take(ctx, separate, limit, w, strategy, at)
+					if err != nil {
+						t.Fatalf("Take: %v", err)
+					}
+					wantUsage, _, err := s.Usage(ctx, separate, strategy, at)
+					if err != nil {
+						t.Fatalf("Usage: %v", err)
+					}
+
+					if gotAllowed != wantAllowed {
+						t.Fatalf("request %d: TakeUsage allowed=%v, Take allowed=%v", i+1, gotAllowed, wantAllowed)
+					}
+					if diff := gotUsage.Used - wantUsage.Used; diff > 0.001 || diff < -0.001 {
+						t.Errorf("request %d: TakeUsage used %.4f, Take+Usage used %.4f", i+1, gotUsage.Used, wantUsage.Used)
+					}
+					if gotUsage.Limit != wantUsage.Limit {
+						t.Errorf("request %d: TakeUsage limit %d, Take+Usage limit %d", i+1, gotUsage.Limit, wantUsage.Limit)
+					}
+					if !gotUsage.WindowEnd.Equal(wantUsage.WindowEnd) {
+						t.Errorf("request %d: TakeUsage window end %s, Take+Usage %s", i+1, gotUsage.WindowEnd, wantUsage.WindowEnd)
+					}
+				}
+			})
+		}
+	})
+
 	t.Run("SlidingWindow", func(t *testing.T) {
 		s := newStore(t)
 		w := time.Minute

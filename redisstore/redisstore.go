@@ -35,6 +35,7 @@ type Store struct {
 }
 
 var _ sentinel.CounterStore = (*Store)(nil)
+var _ sentinel.UsageTaker = (*Store)(nil)
 
 // Option configures a Store.
 type Option func(*Store)
@@ -113,7 +114,7 @@ redis.call('HSET', KEYS[1], 'count', count, 'prev', prev, 'end', wend, 'tokens',
 local ttl = exp - now
 if ttl < 1 then ttl = 1 end
 redis.call('PEXPIRE', KEYS[1], math.ceil(ttl))
-return allowed
+return {tostring(allowed), tostring(count), tostring(prev), tostring(wend), tostring(tokens), tostring(exp)}
 `)
 
 // recordScript drops set members at or before the cutoff, adds one, and
@@ -127,15 +128,47 @@ return redis.call('ZCARD', KEYS[1])
 
 // Take implements sentinel.CounterStore.
 func (s *Store) Take(ctx context.Context, key string, limit int, window time.Duration, strategy sentinel.RateLimitStrategy, now time.Time) (bool, error) {
+	allowed, _, err := s.TakeUsage(ctx, key, limit, window, strategy, now)
+	return allowed, err
+}
+
+// TakeUsage implements sentinel.UsageTaker. The decision script already holds
+// the counter's new state, so it returns that state as well and the usage
+// costs no second round trip: one Redis call per rate-limited request
+// instead of two.
+func (s *Store) TakeUsage(ctx context.Context, key string, limit int, window time.Duration, strategy sentinel.RateLimitStrategy, now time.Time) (bool, sentinel.CounterUsage, error) {
 	if window <= 0 {
-		return true, nil
+		return true, sentinel.CounterUsage{}, nil
 	}
-	n, err := takeScript.Run(ctx, s.client, []string{s.prefix + key},
-		string(strategy), limit, millis(window), now.UnixMilli()).Int()
+	raw, err := takeScript.Run(ctx, s.client, []string{s.prefix + key},
+		string(strategy), limit, millis(window), now.UnixMilli()).StringSlice()
 	if err != nil {
-		return false, err
+		return false, sentinel.CounterUsage{}, err
 	}
-	return n == 1, nil
+	if len(raw) != 6 {
+		return false, sentinel.CounterUsage{}, errors.New("redisstore: take script returned " + strconv.Itoa(len(raw)) + " values, want 6")
+	}
+	num := func(i int) float64 {
+		v, _ := strconv.ParseFloat(raw[i], 64)
+		return v
+	}
+	count, prev, end, tokens, exp := num(1), num(2), num(3), num(4), num(5)
+
+	// The script has already rolled the window and counted this request, so
+	// usage reads off the state it just wrote, with the same arithmetic Usage
+	// uses.
+	u := sentinel.CounterUsage{Limit: limit, WindowEnd: time.UnixMilli(int64(end))}
+	switch strategy {
+	case sentinel.FixedWindow:
+		u.Used = count
+	case sentinel.TokenBucket:
+		u.Used = float64(limit) - tokens
+		u.WindowEnd = time.UnixMilli(int64(exp))
+	default:
+		nowMs, windowMs := float64(now.UnixMilli()), float64(millis(window))
+		u.Used = prev*math.Max(0, math.Min(1, (end-nowMs)/windowMs)) + count
+	}
+	return num(0) == 1, u, nil
 }
 
 // Usage implements sentinel.CounterStore.

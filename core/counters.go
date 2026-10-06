@@ -55,6 +55,15 @@ type CounterStore interface {
 	Keys(ctx context.Context, prefix string) ([]string, error)
 }
 
+// UsageTaker is implemented by counter stores that report a counter's usage
+// as part of the take itself. A rate limiter that sets X-RateLimit-Remaining
+// needs the decision and the usage for the same request: without this it
+// asks twice, which is two network round trips per request against a shared
+// store. A store that doesn't implement it is simply asked twice.
+type UsageTaker interface {
+	TakeUsage(ctx context.Context, key string, limit int, window time.Duration, strategy RateLimitStrategy, now time.Time) (allowed bool, u CounterUsage, err error)
+}
+
 // CounterUsage is a rate-limit counter's state, returned by CounterStore.Usage.
 type CounterUsage struct {
 	Limit     int

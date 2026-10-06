@@ -1138,3 +1138,16 @@ func percentile(sorted []int64, p int) int64 {
 	}
 	return sorted[idx]
 }
+
+// ListWhitelistedIPs implements storage.WhitelistLister.
+func (s *Store) ListWhitelistedIPs(ctx context.Context) ([]*sentinel.WhitelistedIP, error) {
+	var rows []whitelistedIPRow
+	if err := s.db.WithContext(ctx).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*sentinel.WhitelistedIP, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, &sentinel.WhitelistedIP{IP: row.IP, WhitelistAt: row.WhitelistAt})
+	}
+	return result, nil
+}

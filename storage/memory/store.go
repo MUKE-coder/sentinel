@@ -878,3 +878,15 @@ func percentile(sorted []int64, p int) int64 {
 	}
 	return sorted[idx]
 }
+
+// ListWhitelistedIPs implements storage.WhitelistLister.
+func (s *Store) ListWhitelistedIPs(ctx context.Context) ([]*sentinel.WhitelistedIP, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]*sentinel.WhitelistedIP, 0, len(s.whitelistedIPs))
+	for _, w := range s.whitelistedIPs {
+		clone := *w
+		result = append(result, &clone)
+	}
+	return result, nil
+}

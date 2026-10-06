@@ -8,5 +8,16 @@ export default defineConfig({
   build: {
     outDir: '../dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // React and the router are on every page; the charting library is
+        // not. Keeping them in separate chunks means a cached vendor chunk
+        // survives a dashboard update, and pages without charts never
+        // download the chart code.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+        },
+      },
+    },
   },
 })

@@ -87,3 +87,12 @@ type LifecycleStore interface {
 type AuditPruner interface {
 	PruneAuditLogs(ctx context.Context, olderThan time.Duration) error
 }
+
+// WhitelistLister is implemented by stores that can enumerate whitelisted
+// IPs. Without it, the in-memory cache only holds entries this process added
+// itself: a restart loses every whitelisted IP (they stay in the database but
+// stop being honored) and an entry added on one replica never reaches the
+// others. A custom Store that doesn't implement it keeps that old behavior.
+type WhitelistLister interface {
+	ListWhitelistedIPs(ctx context.Context) ([]*sentinel.WhitelistedIP, error)
+}
