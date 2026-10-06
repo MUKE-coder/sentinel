@@ -38,30 +38,30 @@ type Evidence struct {
 
 // ThreatEvent represents a single detected security threat.
 type ThreatEvent struct {
-	ID            string    `json:"id"`
-	Timestamp     time.Time `json:"timestamp"`
-	IP            string    `json:"ip"`
-	ActorID       string    `json:"actor_id"`
-	UserID        string    `json:"user_id,omitempty"`
-	Method        string    `json:"method"`
-	Path          string    `json:"path"`
-	StatusCode    int       `json:"status_code"`
-	UserAgent     string    `json:"user_agent"`
-	Referer       string    `json:"referer,omitempty"`
-	QueryParams   string    `json:"query_params,omitempty"`
-	BodySnippet   string    `json:"body_snippet,omitempty"`
-	Headers       JSONMap   `json:"headers"`
-	ThreatTypes   []string  `json:"threat_types"`
-	Severity      Severity  `json:"severity"`
-	Confidence    int       `json:"confidence"`
+	ID            string     `json:"id"`
+	Timestamp     time.Time  `json:"timestamp"`
+	IP            string     `json:"ip"`
+	ActorID       string     `json:"actor_id"`
+	UserID        string     `json:"user_id,omitempty"`
+	Method        string     `json:"method"`
+	Path          string     `json:"path"`
+	StatusCode    int        `json:"status_code"`
+	UserAgent     string     `json:"user_agent"`
+	Referer       string     `json:"referer,omitempty"`
+	QueryParams   string     `json:"query_params,omitempty"`
+	BodySnippet   string     `json:"body_snippet,omitempty"`
+	Headers       JSONMap    `json:"headers"`
+	ThreatTypes   []string   `json:"threat_types"`
+	Severity      Severity   `json:"severity"`
+	Confidence    int        `json:"confidence"`
 	Evidence      []Evidence `json:"evidence"`
-	Blocked       bool      `json:"blocked"`
-	Country       string    `json:"country,omitempty"`
-	City          string    `json:"city,omitempty"`
-	Lat           float64   `json:"lat,omitempty"`
-	Lng           float64   `json:"lng,omitempty"`
-	Resolved      bool      `json:"resolved"`
-	FalsePositive bool      `json:"false_positive"`
+	Blocked       bool       `json:"blocked"`
+	Country       string     `json:"country,omitempty"`
+	City          string     `json:"city,omitempty"`
+	Lat           float64    `json:"lat,omitempty"`
+	Lng           float64    `json:"lng,omitempty"`
+	Resolved      bool       `json:"resolved"`
+	FalsePositive bool       `json:"false_positive"`
 
 	// CVSS is the Common Vulnerability Scoring System score (0.0–10.0)
 	// assigned to the event, intended for downstream alert routing and
@@ -267,8 +267,8 @@ type ThreatFilter struct {
 	PageSize  int        `json:"page_size"`
 	// SortBy is one of "timestamp" (default), "severity", "ip", or "path".
 	// Other values fall back to "timestamp".
-	SortBy    string     `json:"sort_by"`
-	SortOrder string     `json:"sort_order"`
+	SortBy    string `json:"sort_by"`
+	SortOrder string `json:"sort_order"`
 }
 
 // ActorFilter defines query filters for listing threat actors.
@@ -334,15 +334,15 @@ type GeoResult struct {
 
 // AlertHistory records a sent alert.
 type AlertHistory struct {
-	ID          string    `json:"id"`
-	Timestamp   time.Time `json:"timestamp"`
-	ThreatID    string    `json:"threat_id"`
-	Channel     string    `json:"channel"`
-	Severity    Severity  `json:"severity"`
-	IP          string    `json:"ip"`
-	ThreatType  string    `json:"threat_type"`
-	Success     bool      `json:"success"`
-	Error       string    `json:"error,omitempty"`
+	ID         string    `json:"id"`
+	Timestamp  time.Time `json:"timestamp"`
+	ThreatID   string    `json:"threat_id"`
+	Channel    string    `json:"channel"`
+	Severity   Severity  `json:"severity"`
+	IP         string    `json:"ip"`
+	ThreatType string    `json:"threat_type"`
+	Success    bool      `json:"success"`
+	Error      string    `json:"error,omitempty"`
 }
 
 // UserSummary contains aggregated user information for the users API.

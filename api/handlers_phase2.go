@@ -518,12 +518,12 @@ func (s *Server) handleTestWAFPayload(c *gin.Context) {
 	if s.customRuleEngine != nil {
 		for _, m := range s.customRuleEngine.TestPayload(req.Payload) {
 			matches = append(matches, gin.H{
-				"pattern":    m.PatternName,
+				"pattern":     m.PatternName,
 				"threat_type": string(m.ThreatType),
-				"matched":   m.Matched,
-				"location":  m.Location,
-				"severity":  string(m.BaseSeverity),
-				"confidence": m.BaseConfidence,
+				"matched":     m.Matched,
+				"location":    m.Location,
+				"severity":    string(m.BaseSeverity),
+				"confidence":  m.BaseConfidence,
 			})
 		}
 	}

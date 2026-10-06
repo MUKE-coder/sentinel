@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 	"github.com/MUKE-coder/sentinel/v2/ai"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 )
 
 // mockAIServer returns a test HTTP server that returns valid JSON for any prompt.

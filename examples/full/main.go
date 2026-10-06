@@ -10,8 +10,8 @@ import (
 	sentinel "github.com/MUKE-coder/sentinel/v2"
 	sentinelgorm "github.com/MUKE-coder/sentinel/v2/gorm"
 	"github.com/MUKE-coder/sentinel/v2/pipeline"
-	"github.com/glebarez/sqlite"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -83,7 +83,7 @@ func main() {
 		},
 
 		Anomaly: sentinel.AnomalyConfig{
-			Enabled:    true,
+			Enabled:     true,
 			Sensitivity: sentinel.AnomalySensitivityMedium,
 		},
 

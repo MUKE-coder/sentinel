@@ -29,10 +29,10 @@ func NewOpenAIProvider(apiKey, model string) *OpenAIProvider {
 }
 
 type openaiRequest struct {
-	Model       string           `json:"model"`
-	Messages    []openaiMessage  `json:"messages"`
-	MaxTokens   int              `json:"max_tokens"`
-	Temperature float64          `json:"temperature"`
+	Model       string          `json:"model"`
+	Messages    []openaiMessage `json:"messages"`
+	MaxTokens   int             `json:"max_tokens"`
+	Temperature float64         `json:"temperature"`
 }
 
 type openaiMessage struct {

@@ -189,8 +189,8 @@ type whitelistedIPRow struct {
 func (whitelistedIPRow) TableName() string { return "sentinel_whitelisted_ips" }
 
 type securityScoreRow struct {
-	ID        uint      `gorm:"primaryKey;autoIncrement"`
-	Score     string    `gorm:"column:score"` // JSON blob
+	ID         uint      `gorm:"primaryKey;autoIncrement"`
+	Score      string    `gorm:"column:score"` // JSON blob
 	ComputedAt time.Time `gorm:"index;column:computed_at"`
 }
 

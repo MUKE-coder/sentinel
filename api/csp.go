@@ -34,8 +34,8 @@ type cspReportLimiter struct {
 }
 
 type cspBucket struct {
-	count     int
-	resetAt   time.Time
+	count   int
+	resetAt time.Time
 }
 
 func newCSPLimiter(limit int, window time.Duration) *cspReportLimiter {

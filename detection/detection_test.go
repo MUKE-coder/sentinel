@@ -458,10 +458,10 @@ func TestSQLiBoundariesInQuery(t *testing.T) {
 
 	// The bounded alternatives must still catch real payload shapes.
 	dirty := []string{
-		"id=1' OR 1=1--",          // terminator at end of input
-		"id=1' OR 1=1-- comment",  // terminator followed by space
-		"id=1;-- x",               // stacked-and-commented
-		"id=0x4142434445",         // hex literal after '='
+		"id=1' OR 1=1--",         // terminator at end of input
+		"id=1' OR 1=1-- comment", // terminator followed by space
+		"id=1;-- x",              // stacked-and-commented
+		"id=0x4142434445",        // hex literal after '='
 	}
 	for _, raw := range dirty {
 		req := sentinel.InspectedRequest{RawQuery: raw}

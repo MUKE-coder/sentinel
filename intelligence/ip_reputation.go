@@ -13,12 +13,12 @@ import (
 // IPManager maintains an in-memory cache of blocked and whitelisted IPs,
 // syncing from storage periodically for fast per-request lookups.
 type IPManager struct {
-	store      storage.Store
-	mu         sync.RWMutex
-	blockedIPs map[string]bool
-	blockedCIDRs []*net.IPNet
+	store          storage.Store
+	mu             sync.RWMutex
+	blockedIPs     map[string]bool
+	blockedCIDRs   []*net.IPNet
 	whitelistedIPs map[string]bool
-	stopCh     chan struct{}
+	stopCh         chan struct{}
 }
 
 // NewIPManager creates a new IP manager that caches blocked/whitelisted IPs.

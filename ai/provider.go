@@ -41,12 +41,12 @@ type ThreatAnalysis struct {
 
 // ActorAnalysis is the AI-generated analysis of a threat actor.
 type ActorAnalysis struct {
-	Summary        string   `json:"summary"`
-	Intent         string   `json:"intent"`
-	Sophistication string   `json:"sophistication"`
-	RiskLevel      string   `json:"risk_level"`
+	Summary         string   `json:"summary"`
+	Intent          string   `json:"intent"`
+	Sophistication  string   `json:"sophistication"`
+	RiskLevel       string   `json:"risk_level"`
 	Recommendations []string `json:"recommendations"`
-	RelatedGroups  []string `json:"related_groups,omitempty"`
+	RelatedGroups   []string `json:"related_groups,omitempty"`
 }
 
 // DailySummary is the AI-generated daily security summary.
@@ -81,7 +81,7 @@ type SecurityContext struct {
 	RecentThreats []*sentinel.ThreatEvent `json:"recent_threats,omitempty"`
 	TopActors     []*sentinel.ThreatActor `json:"top_actors,omitempty"`
 	ThreatStats   *sentinel.ThreatStats   `json:"threat_stats,omitempty"`
-	Score         *sentinel.SecurityScore  `json:"score,omitempty"`
+	Score         *sentinel.SecurityScore `json:"score,omitempty"`
 }
 
 // CachedProvider wraps a Provider with response caching.

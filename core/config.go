@@ -9,17 +9,17 @@ import (
 // Config is the main configuration struct for Sentinel.
 // All fields have sensible defaults — core.Config{} works out of the box.
 type Config struct {
-	Dashboard   DashboardConfig
-	Storage     StorageConfig
-	WAF         WAFConfig
-	RateLimit   RateLimitConfig
-	AuthShield  AuthShieldConfig
-	Headers     HeaderConfig
-	Anomaly     AnomalyConfig
+	Dashboard    DashboardConfig
+	Storage      StorageConfig
+	WAF          WAFConfig
+	RateLimit    RateLimitConfig
+	AuthShield   AuthShieldConfig
+	Headers      HeaderConfig
+	Anomaly      AnomalyConfig
 	IPReputation IPReputationConfig
-	Geo         GeoConfig
-	Alerts      AlertConfig
-	AI          *AIConfig
+	Geo          GeoConfig
+	Alerts       AlertConfig
+	AI           *AIConfig
 	// UserExtractor identifies the authenticated user behind a request. When
 	// set, Sentinel records one UserActivity per authenticated request — the
 	// data behind the Users page, the GDPR report's per-user section, and
@@ -27,8 +27,8 @@ type Config struct {
 	// your auth middleware put on the context; return nil for anonymous
 	// requests.
 	UserExtractor func(c *gin.Context) *UserContext
-	Performance PerformanceConfig
-	CAPTCHA     CAPTCHAConfig
+	Performance   PerformanceConfig
+	CAPTCHA       CAPTCHAConfig
 
 	// Counters holds the counters behind rate limiting and AuthShield. Nil
 	// keeps them in process memory, so each replica counts on its own; set a
@@ -179,12 +179,12 @@ type RateLimitConfig struct {
 
 // AuthShieldConfig configures authentication protection.
 type AuthShieldConfig struct {
-	Enabled                    bool
-	LoginRoute                 string
-	MaxFailedAttempts          int
-	LockoutDuration            time.Duration
+	Enabled                     bool
+	LoginRoute                  string
+	MaxFailedAttempts           int
+	LockoutDuration             time.Duration
 	CredentialStuffingDetection bool
-	BruteForceDetection        bool
+	BruteForceDetection         bool
 
 	// CAPTCHAThreshold is the failure count after which a CAPTCHA token is
 	// required on the next login attempt — the suspicious-but-not-locked
@@ -292,9 +292,9 @@ type WebhookConfig struct {
 
 // AIConfig configures optional AI-powered analysis.
 type AIConfig struct {
-	Provider     AIProvider
-	APIKey       string
-	Model        string
+	Provider AIProvider
+	APIKey   string
+	Model    string
 	// Deprecated: DailySummary has no effect. Nothing runs on a schedule; the
 	// daily summary is generated on demand from the dashboard's AI page.
 	DailySummary bool

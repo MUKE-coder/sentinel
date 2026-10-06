@@ -26,15 +26,15 @@ type AnomalyDetector struct {
 
 // UserBaseline represents a user's normal behavioral pattern computed from historical data.
 type UserBaseline struct {
-	UserID         string
-	ActiveHours    map[int]int     // hour-of-day -> activity count
-	TypicalRoutes  map[string]int  // route -> access count
+	UserID             string
+	ActiveHours        map[int]int    // hour-of-day -> activity count
+	TypicalRoutes      map[string]int // route -> access count
 	AvgRequestsPerHour float64
-	SourceIPs      map[string]bool
-	Countries      map[string]bool
-	AvgResponseSize float64
-	TotalRequests  int
-	ComputedAt     time.Time
+	SourceIPs          map[string]bool
+	Countries          map[string]bool
+	AvgResponseSize    float64
+	TotalRequests      int
+	ComputedAt         time.Time
 }
 
 // NewAnomalyDetector creates a new anomaly detector.

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 	"github.com/MUKE-coder/sentinel/v2/ai"
 	"github.com/MUKE-coder/sentinel/v2/alerting"
+	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 	"github.com/MUKE-coder/sentinel/v2/detection"
 	"github.com/MUKE-coder/sentinel/v2/intelligence"
 	"github.com/MUKE-coder/sentinel/v2/middleware"
@@ -23,24 +23,24 @@ import (
 
 // Server holds references needed by API handlers.
 type Server struct {
-	store        storage.Store
-	pipe         *pipeline.Pipeline
-	ipManager    *intelligence.IPManager
-	scoreEngine  *intelligence.ScoreEngine
-	repChecker   *intelligence.ReputationChecker
-	geoLocator   *intelligence.GeoLocator
-	alertDispatch *alerting.Dispatcher
-	authShield   *middleware.AuthShield
-	reportGen       *reports.Generator
+	store            storage.Store
+	pipe             *pipeline.Pipeline
+	ipManager        *intelligence.IPManager
+	scoreEngine      *intelligence.ScoreEngine
+	repChecker       *intelligence.ReputationChecker
+	geoLocator       *intelligence.GeoLocator
+	alertDispatch    *alerting.Dispatcher
+	authShield       *middleware.AuthShield
+	reportGen        *reports.Generator
 	customRuleEngine *detection.CustomRuleEngine
 	aiProvider       ai.Provider
 	rateLimiter      *middleware.RateLimiter
 	waf              *middleware.WAF
 	repWatcher       *intelligence.ReputationWatcher
 	feeds            *intelligence.FeedBlocklist
-	config          sentinel.Config
-	wsHub        *WSHub
-	loginRL      *LoginRateLimiter
+	config           sentinel.Config
+	wsHub            *WSHub
+	loginRL          *LoginRateLimiter
 }
 
 // NewServer creates a new API server.

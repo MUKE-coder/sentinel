@@ -336,4 +336,3 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 	w.responseSize += n
 	return n, err
 }
-

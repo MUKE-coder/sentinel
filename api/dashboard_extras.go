@@ -47,10 +47,10 @@ type cspViolationStat struct {
 // at-a-glance "most-blocked third-party scripts" panel.
 func (s *Server) handleCSPStats(c *gin.Context) {
 	threats, _, err := s.store.ListThreats(c.Request.Context(), sentinel.ThreatFilter{
-		Type:     string(sentinel.ThreatCSPViolation),
-		Page:     1,
-		PageSize: 1000,
-		SortBy:   "timestamp",
+		Type:      string(sentinel.ThreatCSPViolation),
+		Page:      1,
+		PageSize:  1000,
+		SortBy:    "timestamp",
 		SortOrder: "desc",
 	})
 	if err != nil {
