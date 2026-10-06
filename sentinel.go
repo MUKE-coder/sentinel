@@ -29,6 +29,7 @@ import (
 	"github.com/MUKE-coder/sentinel/v2/detection"
 	sentinelgorm "github.com/MUKE-coder/sentinel/v2/gorm"
 	"github.com/MUKE-coder/sentinel/v2/intelligence"
+	"github.com/MUKE-coder/sentinel/v2/liveconfig"
 	"github.com/MUKE-coder/sentinel/v2/middleware"
 	"github.com/MUKE-coder/sentinel/v2/pipeline"
 	"github.com/MUKE-coder/sentinel/v2/safefetch"
@@ -138,7 +139,7 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	}
 
 	// 3. Initialize IP manager
-	ipManager := intelligence.NewIPManager(store)
+	ipManager := intelligence.NewIPManagerWithSync(store, config.Storage.SyncInterval)
 
 	// 4. Initialize event pipeline
 	pipe := pipeline.New(pipeline.DefaultBufferSize)
@@ -308,6 +309,35 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 	}
 	if waf != nil {
 		apiServer.SetWAF(waf)
+	}
+
+	// 10a. Dashboard settings that outlive this process. A store that can
+	// keep them (storage.SettingsStore) makes a change through the dashboard
+	// survive a restart and reach every other replica; without one, changes
+	// apply here only, as they did before v2.6.0.
+	if settingsStore, ok := store.(storage.SettingsStore); ok {
+		targets := liveconfig.Targets{CustomRules: customRuleEngine}
+		if waf != nil {
+			targets.WAF = waf
+		}
+		if rateLimiter != nil {
+			targets.Limiter = rateLimiter
+		}
+		if alertDispatcher != nil {
+			targets.Alerts = alertDispatcher
+		}
+		// New captures the configured values first: that is what the
+		// dashboard's "reset to configured values" goes back to.
+		liveSettings := liveconfig.New(settingsStore, targets)
+		applied, err := liveSettings.Load(context.Background())
+		switch {
+		case err != nil:
+			log.Printf("[sentinel] WARNING: stored dashboard settings could not be read (%v); using the configured values", err)
+		case applied:
+			log.Printf("[sentinel] applied dashboard settings from storage; DELETE %s/api/settings/live restores the configured values", config.Dashboard.Prefix)
+		}
+		go liveSettings.Watch(context.Background(), config.Storage.SyncInterval)
+		apiServer.SetLiveConfig(liveSettings)
 	}
 
 	// 10b. Initialize AI provider (optional)

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -19,8 +20,10 @@ import (
 
 // Ensure Store implements storage.Store and prunes audit logs separately.
 var (
-	_ storage.Store       = (*Store)(nil)
-	_ storage.AuditPruner = (*Store)(nil)
+	_ storage.Store           = (*Store)(nil)
+	_ storage.AuditPruner     = (*Store)(nil)
+	_ storage.WhitelistLister = (*Store)(nil)
+	_ storage.SettingsStore   = (*Store)(nil)
 )
 
 // Store is a SQLite implementation of the storage.Store interface.
@@ -196,6 +199,18 @@ type securityScoreRow struct {
 
 func (securityScoreRow) TableName() string { return "sentinel_security_scores" }
 
+// liveSettingsRow holds the one row of dashboard settings (id 1): the
+// snapshot every replica reads and applies.
+type liveSettingsRow struct {
+	ID        uint      `gorm:"primaryKey"`
+	Revision  int64     `gorm:"column:revision"`
+	Payload   string    `gorm:"column:payload"` // JSON blob
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+	UpdatedBy string    `gorm:"column:updated_by"`
+}
+
+func (liveSettingsRow) TableName() string { return "sentinel_live_settings" }
+
 // Migrate runs database schema migrations.
 func (s *Store) Migrate(ctx context.Context) error {
 	return s.db.WithContext(ctx).AutoMigrate(
@@ -207,6 +222,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		&blockedIPRow{},
 		&whitelistedIPRow{},
 		&securityScoreRow{},
+		&liveSettingsRow{},
 	)
 }
 
@@ -1150,4 +1166,53 @@ func (s *Store) ListWhitelistedIPs(ctx context.Context) ([]*sentinel.Whitelisted
 		result = append(result, &sentinel.WhitelistedIP{IP: row.IP, WhitelistAt: row.WhitelistAt})
 	}
 	return result, nil
+}
+
+// LiveSettings implements storage.SettingsStore.
+func (s *Store) LiveSettings(ctx context.Context) (*sentinel.LiveSettings, error) {
+	var row liveSettingsRow
+	err := s.db.WithContext(ctx).First(&row, 1).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	doc := &sentinel.LiveSettings{}
+	if err := json.Unmarshal([]byte(row.Payload), doc); err != nil {
+		return nil, err
+	}
+	doc.Revision, doc.UpdatedAt, doc.UpdatedBy = row.Revision, row.UpdatedAt, row.UpdatedBy
+	return doc, nil
+}
+
+// SaveLiveSettings implements storage.SettingsStore. The revision comes from
+// the row itself, so two replicas saving at once can't land on the same one;
+// the later write wins and the other replica picks it up on its next poll.
+func (s *Store) SaveLiveSettings(ctx context.Context, doc *sentinel.LiveSettings) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current liveSettingsRow
+		err := tx.First(&current, 1).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		doc.Revision = current.Revision + 1
+		doc.UpdatedAt = time.Now().UTC()
+		payload, err := json.Marshal(doc)
+		if err != nil {
+			return err
+		}
+		return tx.Save(&liveSettingsRow{
+			ID:        1,
+			Revision:  doc.Revision,
+			Payload:   string(payload),
+			UpdatedAt: doc.UpdatedAt,
+			UpdatedBy: doc.UpdatedBy,
+		}).Error
+	})
+}
+
+// ClearLiveSettings implements storage.SettingsStore.
+func (s *Store) ClearLiveSettings(ctx context.Context) error {
+	return s.db.WithContext(ctx).Delete(&liveSettingsRow{}, 1).Error
 }

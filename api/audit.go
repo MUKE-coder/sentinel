@@ -16,13 +16,14 @@ import (
 // dashboard endpoint records who changed what, so an operator can't switch
 // the WAF to log-only or unblock an attacker without a trace.
 const (
-	auditResourceThreat      = "sentinel.threat"
-	auditResourceIPBlock     = "sentinel.ip_block"
-	auditResourceAuthLockout = "sentinel.auth_lockout"
-	auditResourceWAFConfig   = "sentinel.waf_config"
-	auditResourceCustomRule  = "sentinel.waf_custom_rule"
-	auditResourceAlertConfig = "sentinel.alert_config"
-	auditResourceRateLimit   = "sentinel.rate_limit"
+	auditResourceThreat       = "sentinel.threat"
+	auditResourceIPBlock      = "sentinel.ip_block"
+	auditResourceAuthLockout  = "sentinel.auth_lockout"
+	auditResourceWAFConfig    = "sentinel.waf_config"
+	auditResourceCustomRule   = "sentinel.waf_custom_rule"
+	auditResourceAlertConfig  = "sentinel.alert_config"
+	auditResourceRateLimit    = "sentinel.rate_limit"
+	auditResourceLiveSettings = "sentinel.live_settings"
 )
 
 // dashboardRole marks audit entries made through the Sentinel dashboard.

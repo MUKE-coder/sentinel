@@ -96,3 +96,22 @@ type AuditPruner interface {
 type WhitelistLister interface {
 	ListWhitelistedIPs(ctx context.Context) ([]*sentinel.WhitelistedIP, error)
 }
+
+// SettingsStore is implemented by stores that can persist the settings the
+// dashboard changes at runtime: the WAF's mode and sensitivity, its custom
+// rules, per-route rate limits, and the alert threshold. Without it those
+// changes apply only to the process that served the request and are lost on
+// restart, which is what every store did before v2.6.0. The memory, SQLite,
+// and Postgres stores implement it.
+type SettingsStore interface {
+	// LiveSettings returns the stored document, or nil when none is stored.
+	LiveSettings(ctx context.Context) (*sentinel.LiveSettings, error)
+
+	// SaveLiveSettings stores doc under the next revision, which it writes
+	// back into doc along with the update time.
+	SaveLiveSettings(ctx context.Context, doc *sentinel.LiveSettings) error
+
+	// ClearLiveSettings removes the stored document, so every replica goes
+	// back to the values in Config.
+	ClearLiveSettings(ctx context.Context) error
+}
