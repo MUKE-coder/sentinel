@@ -252,3 +252,43 @@ func TestWAFLatencyOverhead(t *testing.T) {
 	}
 	t.Logf("WAF avg latency overhead: %v per request", avgLatency)
 }
+
+// With WAF.AllowedRedirectHosts set, a redirect to one of the application's
+// own hosts is a callback and passes; a redirect anywhere else is still
+// blocked. Without the list, Sentinel can't tell them apart and blocks both.
+func TestWAFAllowsRedirectsToOwnHosts(t *testing.T) {
+	store := memory.New()
+	pipe := pipeline.New(100)
+	pipe.Start(1)
+	defer pipe.Stop()
+
+	r := gin.New()
+	r.Use(WAFMiddleware(sentinel.WAFConfig{
+		Enabled:              true,
+		Mode:                 sentinel.ModeBlock,
+		AllowedRedirectHosts: []string{"example.com", "*.apps.example.com"},
+	}, store, pipe, nil))
+	r.GET("/auth/callback", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	cases := []struct {
+		name  string
+		query string
+		want  int
+	}{
+		{"our own callback", "callback=https://example.com/auth/done", http.StatusOK},
+		{"our own subdomain", "next=https://dash.apps.example.com/home", http.StatusOK},
+		{"someone else's host", "next=https://evil.example/login", http.StatusForbidden},
+		{"scheme-relative stranger", "next=//evil.example", http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/auth/callback?"+tc.query, nil)
+			req.RemoteAddr = "192.0.2.4:5000"
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			if w.Code != tc.want {
+				t.Errorf("got %d, want %d (%s)", w.Code, tc.want, w.Body.String())
+			}
+		})
+	}
+}

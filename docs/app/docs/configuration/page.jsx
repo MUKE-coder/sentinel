@@ -521,6 +521,12 @@ Storage: sentinel.StorageConfig{
             <td>IP addresses or CIDR ranges to exclude from WAF inspection.</td>
           </tr>
           <tr>
+            <td><code>AllowedRedirectHosts</code></td>
+            <td><code>[]string</code></td>
+            <td><code>nil</code></td>
+            <td>Hosts your application owns, so a redirect to one of them is treated as a callback instead of an open redirect. Entries are hosts (<code>example.com</code>, port ignored) or wildcards (<code>*.example.com</code>, any subdomain but not the bare domain). Without this, every absolute URL in a redirect parameter is reported — Sentinel can&apos;t know your hostnames. (v2.6.0+)</td>
+          </tr>
+          <tr>
             <td><code>TrustedProxies</code></td>
             <td><code>[]string</code></td>
             <td><code>nil</code></td>

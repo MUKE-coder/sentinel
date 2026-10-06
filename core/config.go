@@ -112,6 +112,15 @@ type WAFConfig struct {
 	ExcludeRoutes []string
 	ExcludeIPs    []string
 
+	// AllowedRedirectHosts lists the hosts this application owns, so an
+	// absolute URL in a redirect parameter can be told apart from an open
+	// redirect. Sentinel cannot know your hostnames, and the two look the
+	// same: "callback=https://app.example.com/oauth" is both the attack and
+	// an ordinary OAuth callback, so without this every absolute redirect
+	// target is reported. Entries are hosts ("example.com", port ignored) or
+	// wildcards ("*.example.com", any subdomain but not the bare domain).
+	AllowedRedirectHosts []string
+
 	// MaxBodyBytes is the maximum number of bytes the WAF will read and inspect
 	// from a request body. Default: 65536 (64 KB). Requests with bodies larger
 	// than this are inspected up to the limit; set RejectOversizedBody to true

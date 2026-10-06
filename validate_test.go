@@ -287,3 +287,43 @@ func TestNewRouteMatcherReexport(t *testing.T) {
 		t.Errorf("valid pattern rejected: %v", err)
 	}
 }
+
+// An allowlist entry written as a URL never matches a host, so legitimate
+// redirects keep being reported — and an allowlist with the rule off does
+// nothing at all.
+func TestValidateConfigAllowedRedirectHosts(t *testing.T) {
+	bad := ValidateConfig(Config{WAF: WAFConfig{
+		Enabled:              true,
+		Mode:                 ModeBlock,
+		AllowedRedirectHosts: []string{"https://example.com", "*example.com", " "},
+	}})
+	for _, field := range []string{"WAF.AllowedRedirectHosts[0]", "WAF.AllowedRedirectHosts[1]"} {
+		if !hasIssue(bad, IssueError, field) {
+			t.Errorf("expected an error for %s", field)
+		}
+	}
+	if !hasIssue(bad, IssueWarning, "WAF.AllowedRedirectHosts[2]") {
+		t.Error("expected a warning for an empty entry")
+	}
+
+	off := ValidateConfig(Config{WAF: WAFConfig{
+		Enabled:              true,
+		Mode:                 ModeBlock,
+		Rules:                RuleSet{OpenRedirect: RuleOff},
+		AllowedRedirectHosts: []string{"example.com"},
+	}})
+	if !hasIssue(off, IssueWarning, "WAF.AllowedRedirectHosts") {
+		t.Error("an allowlist with OpenRedirect off should warn that it does nothing")
+	}
+
+	good := ValidateConfig(Config{WAF: WAFConfig{
+		Enabled:              true,
+		Mode:                 ModeBlock,
+		AllowedRedirectHosts: []string{"example.com", "*.apps.example.com"},
+	}})
+	for _, issue := range good {
+		if strings.HasPrefix(issue.Field, "WAF.AllowedRedirectHosts") {
+			t.Errorf("a valid allowlist should be clean, got %s", issue)
+		}
+	}
+}
