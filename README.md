@@ -3,11 +3,11 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
-[![Release](https://img.shields.io/badge/Release-v2.5.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
-[![Tests](https://img.shields.io/badge/Tests-17%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
+[![Release](https://img.shields.io/badge/Release-v2.6.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Tests](https://img.shields.io/badge/Tests-18%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
-[![Dashboard Pages](https://img.shields.io/badge/Dashboard-13%20pages-purple)](https://github.com/MUKE-coder/sentinel)
-[![API Endpoints](https://img.shields.io/badge/API-40%2B%20endpoints-yellow)](https://github.com/MUKE-coder/sentinel)
+[![Dashboard Pages](https://img.shields.io/badge/Dashboard-15%20pages-purple)](https://github.com/MUKE-coder/sentinel)
+[![API Endpoints](https://img.shields.io/badge/API-50%2B%20endpoints-yellow)](https://github.com/MUKE-coder/sentinel)
 
 Production-grade security intelligence SDK for Go applications. Drop-in middleware for [Gin](https://github.com/gin-gonic/gin) that provides WAF protection, rate limiting, threat detection, audit logging, anomaly detection, AI-powered analysis, and an embedded React dashboard — all mountable with a single function call.
 
@@ -19,6 +19,16 @@ sentinel.Mount(r, nil, sentinel.Config{})
 r.Run(":8080")
 // Dashboard → http://localhost:8080/sentinel/ui
 ```
+
+## What's new in v2.6.0
+
+**Dashboard settings that outlive the process, and callbacks that stop looking like attacks.**
+
+- **Settings changed from the dashboard are stored.** The WAF's mode and sensitivity, its custom rules, route rate limits, and the alert threshold used to apply to the one instance that served the request: the change was lost on restart, and behind a load balancer the dashboard showed one value while the other replicas enforced another. They now survive restarts and reach every replica within `Storage.SyncInterval` (5s). `DELETE /sentinel/api/settings/live` discards them and puts your configured values back everywhere.
+- **`WAF.AllowedRedirectHosts`.** An absolute URL in a redirect parameter is the shape of an open redirect and of an ordinary OAuth callback, and Sentinel can't know your hostnames — so list them (`example.com`, or `*.example.com`) and your own callbacks stop being reported.
+- **Whitelisted IPs survive a restart.** They were written to storage but kept only in the memory of the process that added them, so every restart quietly put them back under inspection and other replicas never honored them.
+- **A block made on one replica applies on the others within 5 seconds** instead of 30.
+- **One Redis call per rate-limited request** instead of two, and the dashboard's first load is ~240 KB instead of ~720 KB.
 
 ## What's new in v2.5.0
 
