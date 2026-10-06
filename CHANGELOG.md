@@ -2,7 +2,7 @@
 
 All notable changes to Sentinel are documented here.
 
-## [2.6.0] - Unreleased
+## [2.6.0] - 2026-10-06
 
 ### Added
 
@@ -48,7 +48,7 @@ All notable changes to Sentinel are documented here.
   dashboard is not meant to be undone by the next release. `DELETE
   /api/settings/live` hands control back to `Config`.
 
-## [2.5.1] - Unreleased
+## [2.5.1] - 2026-10-06
 
 ### 🔥 Fix
 
