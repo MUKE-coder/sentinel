@@ -219,8 +219,9 @@ func (s *Server) alertMinSeverity() sentinel.Severity {
 }
 
 func (s *Server) handleUpdateAlertConfig(c *gin.Context) {
-	// Changes apply to the running dispatcher but are not persisted: a
-	// restart goes back to the configured value.
+	// The change applies to the running dispatcher and is stored where the
+	// storage backend supports it, so it survives a restart and reaches the
+	// other replicas.
 	var req struct {
 		MinSeverity string `json:"min_severity"`
 	}
@@ -229,6 +230,7 @@ func (s *Server) handleUpdateAlertConfig(c *gin.Context) {
 		return
 	}
 
+	var warning string
 	if req.MinSeverity != "" {
 		sev, ok := parseSeverity(req.MinSeverity)
 		if !ok {
@@ -241,9 +243,10 @@ func (s *Server) handleUpdateAlertConfig(c *gin.Context) {
 			s.alertDispatch.SetMinSeverity(sev)
 		}
 		s.auditDashboard(c, "UPDATE", auditResourceAlertConfig, "alerts", before, sentinel.JSONMap{"min_severity": string(sev)}, nil)
+		warning = s.persistLiveSettings(c)
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Alert config updated"})
+	c.JSON(http.StatusOK, withWarning(gin.H{"message": "Alert config updated"}, warning))
 }
 
 func (s *Server) handleTestAlert(c *gin.Context) {
@@ -409,8 +412,10 @@ func (s *Server) handleGetWAFRules(c *gin.Context) {
 }
 
 // handleUpdateWAFRules changes the running WAF's mode and per-category
-// sensitivity. Rule fields left empty keep their current value. Changes are
-// not persisted: a restart goes back to the configured values.
+// sensitivity. Rule fields left empty keep their current value. The change
+// is stored where the storage backend supports it, so it survives a restart
+// and reaches the other replicas; the response carries a warning when it
+// could not be.
 func (s *Server) handleUpdateWAFRules(c *gin.Context) {
 	var req struct {
 		Mode  string            `json:"mode"`
@@ -446,8 +451,12 @@ func (s *Server) handleUpdateWAFRules(c *gin.Context) {
 	s.waf.SetRules(rules)
 	s.config.WAF.Mode, s.config.WAF.Rules = mode, rules
 	s.auditDashboard(c, "UPDATE", auditResourceWAFConfig, "waf", before, sentinel.JSONMap{"mode": string(mode), "rules": toJSONMap(rules)}, nil)
+	warning := s.persistLiveSettings(c)
 
-	c.JSON(http.StatusOK, gin.H{"message": "WAF rules updated", "data": gin.H{"mode": mode, "rules": rules}})
+	c.JSON(http.StatusOK, withWarning(gin.H{
+		"message": "WAF rules updated",
+		"data":    gin.H{"mode": mode, "rules": rules},
+	}, warning))
 }
 
 func (s *Server) handleListCustomRules(c *gin.Context) {
@@ -486,7 +495,8 @@ func (s *Server) handleAddCustomRule(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Custom rule added", "rule": rule})
+	warning := s.persistLiveSettings(c)
+	c.JSON(http.StatusOK, withWarning(gin.H{"message": "Custom rule added", "rule": rule}, warning))
 }
 
 func (s *Server) handleDeleteCustomRule(c *gin.Context) {
@@ -501,8 +511,9 @@ func (s *Server) handleDeleteCustomRule(c *gin.Context) {
 		return
 	}
 	s.auditDashboard(c, "DELETE", auditResourceCustomRule, id, nil, nil, nil)
+	warning := s.persistLiveSettings(c)
 
-	c.JSON(http.StatusOK, gin.H{"message": "Custom rule deleted"})
+	c.JSON(http.StatusOK, withWarning(gin.H{"message": "Custom rule deleted"}, warning))
 }
 
 func (s *Server) handleTestWAFPayload(c *gin.Context) {
@@ -613,12 +624,12 @@ func (s *Server) handleUpdateRateLimits(c *gin.Context) {
 		next[route] = sentinel.Limit{Requests: limit.Requests, Window: window}
 	}
 
-	// Applies to live requests; not persisted across a restart.
 	s.rateLimiter.SetRouteLimits(next)
 	s.config.RateLimit.ByRoute = next
 	s.auditDashboard(c, "UPDATE", auditResourceRateLimit, "by_route", sentinel.JSONMap{"by_route": toJSONMap(current)}, sentinel.JSONMap{"by_route": toJSONMap(next)}, nil)
+	warning := s.persistLiveSettings(c)
 
-	c.JSON(http.StatusOK, gin.H{"message": "Rate limits updated"})
+	c.JSON(http.StatusOK, withWarning(gin.H{"message": "Rate limits updated"}, warning))
 }
 
 func (s *Server) handleGetRateLimitStates(c *gin.Context) {

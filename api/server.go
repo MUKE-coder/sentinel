@@ -14,6 +14,7 @@ import (
 	sentinel "github.com/MUKE-coder/sentinel/v2/core"
 	"github.com/MUKE-coder/sentinel/v2/detection"
 	"github.com/MUKE-coder/sentinel/v2/intelligence"
+	"github.com/MUKE-coder/sentinel/v2/liveconfig"
 	"github.com/MUKE-coder/sentinel/v2/middleware"
 	"github.com/MUKE-coder/sentinel/v2/pipeline"
 	"github.com/MUKE-coder/sentinel/v2/reports"
@@ -38,6 +39,7 @@ type Server struct {
 	waf              *middleware.WAF
 	repWatcher       *intelligence.ReputationWatcher
 	feeds            *intelligence.FeedBlocklist
+	liveConfig       *liveconfig.Manager
 	config           sentinel.Config
 	wsHub            *WSHub
 	loginRL          *LoginRateLimiter
@@ -198,6 +200,11 @@ func (s *Server) RegisterRoutes(r *gin.Engine, prefix string) {
 		protected.GET("/ai/waf-recommendations", s.handleAIWAFRecommendations)
 
 		// Rate Limits
+		// Dashboard settings: what is stored versus what Config asked for,
+		// and a way back to the configured values.
+		protected.GET("/settings/live", s.handleGetLiveSettings)
+		protected.DELETE("/settings/live", s.handleResetLiveSettings)
+
 		protected.GET("/rate-limits", s.handleGetRateLimits)
 		protected.PUT("/rate-limits", s.handleUpdateRateLimits)
 		protected.GET("/rate-limits/current", s.handleGetRateLimitStates)

@@ -2,6 +2,41 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.6.0] - Unreleased
+
+### Added
+
+- **Dashboard settings outlive the process and reach every replica.**
+  Changing the WAF's mode or sensitivity, a custom rule, a route rate limit,
+  or the alert threshold from the dashboard applied to the process that
+  served the request and nowhere else: the change was lost on the next
+  restart, and behind a load balancer the dashboard showed one value while
+  the other replicas went on enforcing another. Those settings are now
+  stored as a snapshot (`core.LiveSettings`) through a new optional
+  `storage.SettingsStore`, which the memory, SQLite, and Postgres stores
+  implement. Package `liveconfig` applies a stored snapshot at startup and
+  polls for newer revisions every `Storage.SyncInterval`, so a change made
+  on one replica reaches the others — and a replica that scales up starts
+  from the same settings as the rest.
+- `GET /api/settings/live` shows what is stored, what `Config` asked for,
+  whether the storage backend can keep settings, and the poll interval.
+  `DELETE /api/settings/live` discards the stored settings and restores the
+  configured values everywhere. Both are audited.
+- `Storage.SyncInterval` (default 5s) sets how often a replica picks up
+  changes made elsewhere — IP blocks, whitelist entries, and dashboard
+  settings. A negative value turns polling off. `ValidateConfig` warns when
+  polling is off or the interval is longer than a minute.
+- A change that could not be stored comes back with a `warning` in the
+  response, naming that it applies to that instance only, instead of looking
+  permanent.
+
+### Behavior changes
+
+- **Stored dashboard settings win over the values in `Config`**, including
+  after a deploy that changes them in code: an urgent change made from the
+  dashboard is not meant to be undone by the next release. `DELETE
+  /api/settings/live` hands control back to `Config`.
+
 ## [2.5.1] - Unreleased
 
 ### 🔥 Fix

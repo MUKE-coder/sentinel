@@ -15,8 +15,10 @@ import (
 
 // Ensure Store implements storage.Store and prunes audit logs separately.
 var (
-	_ storage.Store       = (*Store)(nil)
-	_ storage.AuditPruner = (*Store)(nil)
+	_ storage.Store           = (*Store)(nil)
+	_ storage.AuditPruner     = (*Store)(nil)
+	_ storage.WhitelistLister = (*Store)(nil)
+	_ storage.SettingsStore   = (*Store)(nil)
 )
 
 // Store is an in-memory implementation of the storage.Store interface.
@@ -30,6 +32,7 @@ type Store struct {
 	blockedIPs     map[string]*sentinel.BlockedIP
 	whitelistedIPs map[string]*sentinel.WhitelistedIP
 	securityScore  *sentinel.SecurityScore
+	liveSettings   *sentinel.LiveSettings
 	threatList     []string // ordered threat IDs by timestamp desc
 }
 
@@ -889,4 +892,33 @@ func (s *Store) ListWhitelistedIPs(ctx context.Context) ([]*sentinel.Whitelisted
 		result = append(result, &clone)
 	}
 	return result, nil
+}
+
+// LiveSettings implements storage.SettingsStore.
+func (s *Store) LiveSettings(ctx context.Context) (*sentinel.LiveSettings, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.liveSettings.Clone(), nil
+}
+
+// SaveLiveSettings implements storage.SettingsStore.
+func (s *Store) SaveLiveSettings(ctx context.Context, doc *sentinel.LiveSettings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := int64(1)
+	if s.liveSettings != nil {
+		next = s.liveSettings.Revision + 1
+	}
+	doc.Revision = next
+	doc.UpdatedAt = time.Now().UTC()
+	s.liveSettings = doc.Clone()
+	return nil
+}
+
+// ClearLiveSettings implements storage.SettingsStore.
+func (s *Store) ClearLiveSettings(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.liveSettings = nil
+	return nil
 }

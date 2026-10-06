@@ -85,6 +85,12 @@ type StorageConfig struct {
 	// chain is plain SHA-256, which catches accidental damage and naive edits.
 	AuditKey string
 
+	// SyncInterval is how often this replica picks up changes made
+	// elsewhere: IP blocks and whitelist entries written by another replica,
+	// and dashboard settings changed on one. Default: 5s. A negative value
+	// turns polling off, leaving this process to see only its own changes.
+	SyncInterval time.Duration
+
 	MaxOpenConns int
 	MaxIdleConns int
 }
@@ -374,6 +380,9 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.Storage.AuditRetentionDays == 0 {
 		c.Storage.AuditRetentionDays = 365
+	}
+	if c.Storage.SyncInterval == 0 {
+		c.Storage.SyncInterval = 5 * time.Second
 	}
 	if c.Storage.MaxOpenConns == 0 {
 		c.Storage.MaxOpenConns = 10
