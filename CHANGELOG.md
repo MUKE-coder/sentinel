@@ -46,6 +46,14 @@ All notable changes to Sentinel are documented here.
   `sentinel_username` from the handler) a pair lockout has nothing to key
   on, so the address is locked — what every application got before v2.7.0,
   rather than no lockout at all. `ExemptIPs` still applies.
+- **The dashboard's login budget holds across replicas.** Ten attempts per
+  address per quarter hour lived in process memory, so an attacker spreading
+  guesses over N replicas behind a load balancer got 10N attempts at the
+  dashboard password ([#18](https://github.com/MUKE-coder/sentinel/issues/18),
+  the half v2.5.0 left: the rate limiter and AuthShield moved to
+  `Config.Counters`, this limiter did not). It now uses the same store, so
+  the budget is shared, and it fails open on a store outage rather than
+  locking everyone out of the dashboard.
 - A refused sign-in now carries a `Retry-After` header.
 - `AuthShieldStatus` (and the dashboard's AuthShield panel) lists the
   accounts locked from each address. Without it the panel showed nobody

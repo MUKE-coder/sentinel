@@ -100,6 +100,13 @@ func (s *Server) SetWAF(w *middleware.WAF) {
 	s.waf = w
 }
 
+// SetCounters moves the dashboard's login budget onto a shared counter
+// store, so ten attempts means ten across every replica rather than ten
+// each (issue #18).
+func (s *Server) SetCounters(cs sentinel.CounterStore) {
+	s.loginRL.SetCounters(cs)
+}
+
 // RegisterRoutes registers all API routes on the Gin router.
 func (s *Server) RegisterRoutes(r *gin.Engine, prefix string) {
 	// CSP violation receiver. Mounted at <prefix>/csp-report (NOT under /api)

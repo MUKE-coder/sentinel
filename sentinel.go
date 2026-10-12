@@ -256,8 +256,11 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 
 	// Counters behind rate limiting and AuthShield: shared by every replica
 	// when Config.Counters is set (redisstore), per process otherwise.
+	// Counters behind rate limiting, AuthShield, and the dashboard's login
+	// budget: shared by every replica when Config.Counters is set
+	// (redisstore), per process otherwise.
 	counters := config.Counters
-	if counters == nil && (config.AuthShield.Enabled || config.RateLimit.Enabled) {
+	if counters == nil {
 		counters = middleware.NewMemoryCounterStore()
 	}
 
@@ -302,6 +305,7 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 
 	// 10. Register API routes
 	apiServer := api.NewServer(store, pipe, ipManager, scoreEngine, config)
+	apiServer.SetCounters(counters)
 	apiServer.SetReputationChecker(repChecker)
 	if repWatcher != nil {
 		apiServer.SetReputationWatcher(repWatcher)
