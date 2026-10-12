@@ -1765,9 +1765,11 @@ UserExtractor: func(c *gin.Context) *sentinel.UserContext {
 
       <h2 id="counters">Counters (Multiple Replicas)</h2>
       <p>
-        <code>Config.Counters</code> holds the counters behind rate limiting and AuthShield. When it
-        is nil, they live in process memory, and each replica counts on its own. Set a shared store
-        so limits and lockouts hold across every instance.
+        <code>Config.Counters</code> holds the counters behind rate limiting, AuthShield, and the
+        dashboard&apos;s own login budget. When it is nil they live in process memory and each
+        replica counts on its own — ten dashboard login attempts per address becomes ten per
+        replica, so four replicas give an attacker forty guesses at the dashboard password. Set a
+        shared store and every limit holds across all of them.
       </p>
 
       <table>
@@ -1785,8 +1787,9 @@ UserExtractor: func(c *gin.Context) *sentinel.UserContext {
             <td><code>CounterStore</code></td>
             <td><code>nil</code> (in memory)</td>
             <td>
-              Where rate-limit counters and AuthShield failures and lockouts are kept.{' '}
-              <code>redisstore.New(client)</code> shares them through Redis.
+              Where rate-limit counters, AuthShield failures and lockouts, and the dashboard
+              login budget are kept. <code>redisstore.New(client)</code> shares them through
+              Redis. The dashboard login budget joined this in v2.7.0.
             </td>
           </tr>
         </tbody>

@@ -116,7 +116,7 @@ export default function ApiReference() {
       <h2 id="authentication">Authentication</h2>
       <Endpoints
         rows={[
-          ['POST', '/api/auth/login', <>Exchange <code>{'{"username","password"}'}</code> for a JWT (<code>{'{"token","expires_in":86400}'}</code>). Limited to 10 attempts per 15 minutes per client IP; every attempt is written to the audit log.</>],
+          ['POST', '/api/auth/login', <>Exchange <code>{'{"username","password"}'}</code> for a JWT (<code>{'{"token","expires_in":86400}'}</code>). Limited to 10 attempts per 15 minutes per client address — across every replica when <code>Config.Counters</code> is set, per replica before v2.7.0. Every attempt is written to the audit log.</>],
           ['POST', '/api/auth/logout', 'Returns success. Tokens are stateless and are not revoked — discard the token client-side.'],
           ['GET', '/api/auth/verify', 'Returns 200 if the token is valid, 401 if not.'],
         ]}
