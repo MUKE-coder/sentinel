@@ -2,7 +2,7 @@
 
 All notable changes to Sentinel are documented here.
 
-## [2.7.0] - Unreleased
+## [2.7.0] - 2026-10-12
 
 ### Added
 
