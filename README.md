@@ -3,7 +3,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
-[![Release](https://img.shields.io/badge/Release-v2.6.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Release](https://img.shields.io/badge/Release-v2.7.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
 [![Tests](https://img.shields.io/badge/Tests-18%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
 [![Dashboard Pages](https://img.shields.io/badge/Dashboard-15%20pages-purple)](https://github.com/MUKE-coder/sentinel)
@@ -19,6 +19,18 @@ sentinel.Mount(r, nil, sentinel.Config{})
 r.Run(":8080")
 // Dashboard → http://localhost:8080/sentinel/ui
 ```
+
+## What's new in v2.7.0
+
+**Four reported issues, and three more bugs found while fixing them.**
+
+- **MySQL storage.** `sentinel.MySQL` was exported but `Mount` had no case for it, so an application configured for MySQL ran on in-memory storage: the dashboard looked healthy and every threat, block and audit entry disappeared on restart. There is a real adapter now, and a driver `Mount` doesn't recognise is a startup error instead of a silent downgrade.
+- **A lockout no longer bars everyone sharing an address.** AuthShield locked the client address, and behind NAT that is an office, a campus or a mobile carrier — five mistakes by one person barred everybody for fifteen minutes, and anyone who knew a target's egress address could do it on purpose. Lockouts are keyed on the (address, account) pair by default (`LockoutKey`), with `ExemptIPs` for known shared egress and a short address-level throttle for one machine working through many accounts.
+- **A CAPTCHA tier that actually fires.** `CAPTCHAThreshold` was set whether or not a provider existed, so most deployments had a tier between "allow" and "locked out" that could never fire and said nothing about it.
+- **The dashboard login budget holds across replicas.** Ten attempts per address was ten *per replica*, so four replicas gave an attacker forty guesses at the dashboard password.
+- Also: replicas starting together no longer fail their migrations, `WAF.ExcludeIPs` honours CIDR ranges (documented since v2.0, never implemented), and an empty Postgres or MySQL DSN is reported instead of failing later.
+
+**Upgrading:** nothing required. For the old lockout behaviour set `AuthShield.LockoutKey: sentinel.LockoutIP`; see the [upgrade notes](https://sentinel-go-sdk.vercel.app/docs/whats-new-v2-7#upgrade).
 
 ## What's new in v2.6.0
 
