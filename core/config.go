@@ -381,7 +381,11 @@ func (c *Config) ApplyDefaults() {
 	if c.Storage.Driver == "" {
 		c.Storage.Driver = SQLite
 	}
-	if c.Storage.DSN == "" {
+	// Only the file-based driver has a sensible default DSN. Giving every
+	// driver "sentinel.db" meant a Postgres or MySQL config with no DSN
+	// looked complete and failed at connect time instead of in
+	// ValidateConfig.
+	if c.Storage.DSN == "" && c.Storage.Driver == SQLite {
 		c.Storage.DSN = "sentinel.db"
 	}
 	if c.Storage.RetentionDays == 0 {

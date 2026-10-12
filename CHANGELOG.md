@@ -2,6 +2,42 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.7.0] - Unreleased
+
+### Added
+
+- **A MySQL storage adapter** (`storage/mysql`, `Storage.Driver: MySQL`).
+  `sentinel.MySQL` was exported but had no case in `Mount`, so an
+  application configured for MySQL fell through to in-memory storage and
+  lost every threat, block, and audit entry on restart while the dashboard
+  looked healthy ([#30](https://github.com/MUKE-coder/sentinel/issues/30)).
+  The adapter reuses the same GORM models as SQLite and Postgres, so the
+  schema and feature set are identical. The DSN is a go-sql-driver DSN and
+  must include `parseTime=True`.
+
+### 🔥 Fix
+
+- **An unrecognised `Storage.Driver` is now a startup error.** `Mount` fell
+  back to in-memory storage for any driver it did not know — a misspelled
+  `"postgress"` started cleanly and threw away all security data on every
+  restart. `MountE` returns an error naming the driver instead.
+- `ApplyDefaults` no longer gives every driver the SQLite filename as its
+  DSN: a Postgres or MySQL config with no DSN looked complete and failed at
+  connect time. `ValidateConfig` reports the empty DSN instead.
+- Compliance reports count MySQL as durable storage.
+- Columns holding paths, user agents, and JSON blobs are explicitly `text`
+  in the shared schema. SQLite and Postgres already stored them that way;
+  MySQL needs it spelled out, or a 2 KB evidence blob would not fit.
+- **Replicas starting together no longer fail on migrations.** They all run
+  `AutoMigrate` against the one shared database, and the loser of the race
+  got "table already exists" and took the replica down with it — on MySQL
+  three of four replicas failed to start. Migrations are retried once, which
+  is enough for the winner to finish, and `AutoMigrate` is idempotent.
+- **The audit log's hash chain verifies on MySQL.** The driver's default
+  timestamp column is `datetime(3)`, so a chain hashed to the microsecond
+  could not be recomputed from what was stored: every entry read back as
+  modified. The adapter asks for `datetime(6)`.
+
 ## [2.6.0] - 2026-10-06
 
 ### Added

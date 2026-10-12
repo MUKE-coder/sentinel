@@ -82,9 +82,14 @@ func TestValidateConfigCatchesSilentTraps(t *testing.T) {
 			IssueError, "Storage.Driver",
 		},
 		{
-			"mysql driver not implemented",
+			"mysql driver without a DSN",
 			Config{Storage: StorageConfig{Driver: MySQL}},
-			IssueError, "Storage.Driver",
+			IssueError, "Storage.DSN",
+		},
+		{
+			"postgres driver without a DSN",
+			Config{Storage: StorageConfig{Driver: Postgres}},
+			IssueError, "Storage.DSN",
 		},
 		{
 			"malformed dashboard prefix",

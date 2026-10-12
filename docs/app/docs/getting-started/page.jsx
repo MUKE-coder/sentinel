@@ -213,6 +213,7 @@ func main() {
         <tbody>
           <tr><td>SQLite</td><td><code>sentinel.SQLite</code></td><td>Default. Pure Go (no CGo). In containers, keep the file on a persistent volume.</td></tr>
           <tr><td>Postgres</td><td><code>sentinel.Postgres</code></td><td>Recommended for production and for multiple replicas.</td></tr>
+          <tr><td>MySQL</td><td><code>sentinel.MySQL</code></td><td>v2.7.0+. Needs <code>parseTime=True</code> in the DSN.</td></tr>
           <tr><td>Memory</td><td><code>sentinel.Memory</code></td><td>Development and tests only — everything is lost on restart.</td></tr>
         </tbody>
       </table>

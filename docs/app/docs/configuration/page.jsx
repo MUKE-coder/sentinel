@@ -29,7 +29,7 @@ export default function Configuration() {
           },
           {
             q: 'What storage backends does Sentinel support?',
-            a: 'Sentinel ships three storage backends: SQLite (the default — pure Go, no CGo, a sentinel.db file), PostgreSQL (recommended for production, and required for IP blocks to reach every replica), and in-memory (development and tests only — everything is lost on restart). A MySQL constant exists but is not implemented: selecting it falls back to in-memory storage, and ValidateConfig reports it as an error.',
+            a: 'Sentinel ships four storage backends: SQLite (the default — pure Go, no CGo, a sentinel.db file), PostgreSQL (recommended for production, and required for blocks and dashboard settings to reach every replica), MySQL (v2.7.0+, same schema and feature set as Postgres), and in-memory (development and tests only — everything is lost on restart). A driver Mount does not recognise is now a startup error rather than a silent fall back to in-memory storage.',
           },
           {
             q: 'How do I enable the WAF in Sentinel?',
@@ -417,7 +417,7 @@ Dashboard: sentinel.DashboardConfig{
           <tr>
             <td>Postgres</td>
             <td><code>sentinel.Postgres</code></td>
-            <td>Recommended for production. Required for IP blocks to reach every replica (each instance re-reads the block list every 30 seconds).</td>
+            <td>Recommended for production. A shared database is what makes IP blocks, the whitelist, and dashboard settings reach every replica (each instance re-reads them every <code>Storage.SyncInterval</code>, 5s by default).</td>
           </tr>
           <tr>
             <td>Memory</td>
@@ -427,7 +427,7 @@ Dashboard: sentinel.DashboardConfig{
           <tr>
             <td>MySQL</td>
             <td><code>sentinel.MySQL</code></td>
-            <td><strong>Not implemented.</strong> Selecting it silently falls back to in-memory storage; <code>ValidateConfig</code> reports it as an error.</td>
+            <td>Same schema and feature set as Postgres (v2.7.0+). The DSN is a go-sql-driver DSN and must include <code>parseTime=True</code>: <code>user:pass@tcp(host:3306)/sentinel?charset=utf8mb4&amp;parseTime=True</code>. Before v2.7.0 this constant existed but was unimplemented, and selecting it silently fell back to in-memory storage.</td>
           </tr>
         </tbody>
       </table>
