@@ -2,6 +2,7 @@ package sentinel
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"regexp"
@@ -172,6 +173,12 @@ func ValidateConfig(config Config) []ConfigIssue {
 		report(IssueError, "WAF.Rules", "%v — the category is enforced as strict", err)
 	}
 	validateRoutePatterns(report, "WAF.ExcludeRoutes", config.WAF.ExcludeRoutes)
+	for i, entry := range config.WAF.ExcludeIPs {
+		if _, _, err := net.ParseCIDR(entry); err != nil && net.ParseIP(entry) == nil {
+			report(IssueError, fmt.Sprintf("WAF.ExcludeIPs[%d]", i),
+				"%q is neither an IP address nor a CIDR range — it can never match a client, so the traffic it was meant to exempt is still inspected", entry)
+		}
+	}
 	validateCustomRules(report, config.WAF.CustomRules)
 
 	for i, host := range config.WAF.AllowedRedirectHosts {
@@ -232,6 +239,42 @@ func ValidateConfig(config Config) []ConfigIssue {
 			report(IssueWarning, "AuthShield.CAPTCHAThreshold",
 				"CAPTCHAThreshold (%d) >= MaxFailedAttempts (%d) — the lockout always fires first and the CAPTCHA tier is unreachable",
 				config.AuthShield.CAPTCHAThreshold, config.AuthShield.MaxFailedAttempts)
+		}
+		// A threshold with nothing to answer it reads as a defence and is
+		// not one: every failure goes straight on towards the lockout (#35).
+		if config.AuthShield.CAPTCHAThreshold > 0 && config.CAPTCHA.Providers() == 0 {
+			report(IssueWarning, "AuthShield.CAPTCHAThreshold",
+				"is %d but no CAPTCHA provider is configured — the tier can never fire and every failure counts towards the lockout; set one of CAPTCHA.HCaptchaSecret, TurnstileSecret, RecaptchaSecret, or SelfHostedSecret, or set CAPTCHAThreshold to 0",
+				config.AuthShield.CAPTCHAThreshold)
+		}
+		if !core.ValidAuthShieldLockoutKey(config.AuthShield.LockoutKey) {
+			report(IssueError, "AuthShield.LockoutKey",
+				"%q is not pair, ip, or account — AuthShield falls back to pair", config.AuthShield.LockoutKey)
+		}
+		for i, entry := range config.AuthShield.ExemptIPs {
+			field := fmt.Sprintf("AuthShield.ExemptIPs[%d]", i)
+			if strings.TrimSpace(entry) == "" {
+				report(IssueWarning, field, "is empty and is ignored")
+				continue
+			}
+			if _, _, err := net.ParseCIDR(entry); err != nil && net.ParseIP(entry) == nil {
+				report(IssueError, field,
+					"%q is neither an IP address nor a CIDR range — it can never match a client and the address it was meant to spare stays lockable", entry)
+			}
+		}
+		if budget := config.AuthShield.AddressFailureBudget; budget > 0 && budget < config.AuthShield.MaxFailedAttempts {
+			report(IssueWarning, "AuthShield.AddressFailureBudget",
+				"%d is below MaxFailedAttempts (%d), so the address throttle fires before the per-account lockout — one person's mistakes slow down everyone sharing their address",
+				budget, config.AuthShield.MaxFailedAttempts)
+		}
+		if config.AuthShield.AddressCooldown > config.AuthShield.LockoutDuration && config.AuthShield.LockoutDuration > 0 {
+			report(IssueWarning, "AuthShield.AddressCooldown",
+				"%s is longer than LockoutDuration (%s) — the throttle is meant to be the short, shared-address-safe tier",
+				config.AuthShield.AddressCooldown, config.AuthShield.LockoutDuration)
+		}
+		if config.AuthShield.LockoutKey == core.LockoutIP && len(config.AuthShield.ExemptIPs) == 0 {
+			report(IssueWarning, "AuthShield.LockoutKey",
+				`is "ip", so a lockout bars every client sharing that address — behind NAT or CGNAT that is an office, a campus, or a mobile carrier. Use "pair" (the default), or list your shared egress ranges in AuthShield.ExemptIPs`)
 		}
 	}
 

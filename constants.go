@@ -37,6 +37,13 @@ const (
 	ActorBlocked     = core.ActorBlocked
 	ActorWhitelisted = core.ActorWhitelisted
 
+	// What an AuthShield lockout bars. The default, LockoutPair, bars the
+	// (address, account) combination; LockoutIP bars the address, which
+	// behind NAT is everyone sharing it.
+	LockoutPair    = core.LockoutPair
+	LockoutIP      = core.LockoutIP
+	LockoutAccount = core.LockoutAccount
+
 	FixedWindow   = core.FixedWindow
 	SlidingWindow = core.SlidingWindow
 	TokenBucket   = core.TokenBucket

@@ -110,10 +110,10 @@ func (w *WAF) build(config sentinel.WAFConfig, store storage.Store, pipe *pipeli
 	if len(blockChecker) > 0 {
 		checker = blockChecker[0]
 	}
-	excludeIPSet := make(map[string]bool)
-	for _, ip := range config.ExcludeIPs {
-		excludeIPSet[ip] = true
-	}
+	// ExcludeIPs has always been documented as "IP addresses or CIDR
+	// ranges", but entries were compared as exact strings, so a
+	// "10.0.0.0/8" entry excluded exactly one address: the literal string.
+	excludeIPs := NewIPMatcher(config.ExcludeIPs)
 	redirectAllow := detection.NewRedirectAllowlist(config.AllowedRedirectHosts)
 
 	return func(c *gin.Context) {
@@ -133,7 +133,7 @@ func (w *WAF) build(config sentinel.WAFConfig, store storage.Store, pipe *pipeli
 		clientIP := extractClientIP(c)
 
 		// Check if IP is excluded
-		if excludeIPSet[clientIP] {
+		if excludeIPs.Matches(clientIP) {
 			c.Next()
 			return
 		}
