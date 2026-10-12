@@ -74,17 +74,17 @@ type threatEventRow struct {
 	ActorID       string    `gorm:"column:actor_id"`
 	UserID        string    `gorm:"column:user_id"`
 	Method        string    `gorm:"column:method"`
-	Path          string    `gorm:"column:path"`
+	Path          string    `gorm:"column:path;type:text"`
 	StatusCode    int       `gorm:"column:status_code"`
-	UserAgent     string    `gorm:"column:user_agent"`
-	Referer       string    `gorm:"column:referer"`
-	QueryParams   string    `gorm:"column:query_params"`
-	BodySnippet   string    `gorm:"column:body_snippet"`
-	Headers       string    `gorm:"column:headers"`
-	ThreatTypes   string    `gorm:"column:threat_types"`
+	UserAgent     string    `gorm:"column:user_agent;type:text"`
+	Referer       string    `gorm:"column:referer;type:text"`
+	QueryParams   string    `gorm:"column:query_params;type:text"`
+	BodySnippet   string    `gorm:"column:body_snippet;type:text"`
+	Headers       string    `gorm:"column:headers;type:text"`
+	ThreatTypes   string    `gorm:"column:threat_types;type:text"`
 	Severity      string    `gorm:"index;column:severity"`
 	Confidence    int       `gorm:"column:confidence"`
-	Evidence      string    `gorm:"column:evidence"`
+	Evidence      string    `gorm:"column:evidence;type:text"`
 	Blocked       bool      `gorm:"column:blocked"`
 	Country       string    `gorm:"column:country"`
 	City          string    `gorm:"column:city"`
@@ -103,13 +103,13 @@ type threatActorRow struct {
 	LastSeen        time.Time `gorm:"index;column:last_seen"`
 	TotalRequests   int       `gorm:"column:total_requests"`
 	ThreatCount     int       `gorm:"column:threat_count"`
-	AttackTypes     string    `gorm:"column:attack_types"`
-	TargetedRoutes  string    `gorm:"column:targeted_routes"`
+	AttackTypes     string    `gorm:"column:attack_types;type:text"`
+	TargetedRoutes  string    `gorm:"column:targeted_routes;type:text"`
 	RiskScore       int       `gorm:"index;column:risk_score"`
 	Status          string    `gorm:"column:status"`
 	Country         string    `gorm:"column:country"`
 	City            string    `gorm:"column:city"`
-	ISP             string    `gorm:"column:isp"`
+	ISP             string    `gorm:"column:isp;type:text"`
 	IsKnownBadActor bool      `gorm:"column:is_known_bad_actor"`
 	AbuseScore      int       `gorm:"column:abuse_score"`
 	Lat             float64   `gorm:"column:lat"`
@@ -124,10 +124,10 @@ type userActivityRow struct {
 	UserID     string    `gorm:"index;column:user_id"`
 	UserEmail  string    `gorm:"column:user_email"`
 	Action     string    `gorm:"column:action"`
-	Path       string    `gorm:"column:path"`
+	Path       string    `gorm:"column:path;type:text"`
 	Method     string    `gorm:"column:method"`
 	IP         string    `gorm:"column:ip"`
-	UserAgent  string    `gorm:"column:user_agent"`
+	UserAgent  string    `gorm:"column:user_agent;type:text"`
 	StatusCode int       `gorm:"column:status_code"`
 	Duration   int64     `gorm:"column:duration"`
 	ThreatID   string    `gorm:"column:threat_id"`
@@ -144,13 +144,13 @@ type auditLogRow struct {
 	UserRole   string    `gorm:"column:user_role"`
 	Action     string    `gorm:"index;column:action"`
 	Resource   string    `gorm:"index;column:resource"`
-	ResourceID string    `gorm:"column:resource_id"`
-	Before     string    `gorm:"column:before_state"`
-	After      string    `gorm:"column:after_state"`
+	ResourceID string    `gorm:"column:resource_id;type:text"`
+	Before     string    `gorm:"column:before_state;type:text"`
+	After      string    `gorm:"column:after_state;type:text"`
 	IP         string    `gorm:"column:ip"`
-	UserAgent  string    `gorm:"column:user_agent"`
+	UserAgent  string    `gorm:"column:user_agent;type:text"`
 	Success    bool      `gorm:"column:success"`
-	Error      string    `gorm:"column:error"`
+	Error      string    `gorm:"column:error;type:text"`
 	RequestID  string    `gorm:"column:request_id"`
 	ChainID    string    `gorm:"index;column:chain_id"`
 	ChainSeq   int64     `gorm:"column:chain_seq"`
@@ -169,14 +169,14 @@ type performanceMetricRow struct {
 	Duration     int64     `gorm:"column:duration"`
 	ResponseSize int64     `gorm:"column:response_size"`
 	IP           string    `gorm:"column:ip"`
-	Error        string    `gorm:"column:error"`
+	Error        string    `gorm:"column:error;type:text"`
 }
 
 func (performanceMetricRow) TableName() string { return "sentinel_performance" }
 
 type blockedIPRow struct {
 	IP        string     `gorm:"primaryKey;column:ip"`
-	Reason    string     `gorm:"column:reason"`
+	Reason    string     `gorm:"column:reason;type:text"`
 	BlockedAt time.Time  `gorm:"column:blocked_at"`
 	ExpiresAt *time.Time `gorm:"column:expires_at"`
 	CIDR      bool       `gorm:"column:cidr"`
@@ -193,7 +193,7 @@ func (whitelistedIPRow) TableName() string { return "sentinel_whitelisted_ips" }
 
 type securityScoreRow struct {
 	ID         uint      `gorm:"primaryKey;autoIncrement"`
-	Score      string    `gorm:"column:score"` // JSON blob
+	Score      string    `gorm:"column:score;type:text"` // JSON blob
 	ComputedAt time.Time `gorm:"index;column:computed_at"`
 }
 
@@ -204,15 +204,35 @@ func (securityScoreRow) TableName() string { return "sentinel_security_scores" }
 type liveSettingsRow struct {
 	ID        uint      `gorm:"primaryKey"`
 	Revision  int64     `gorm:"column:revision"`
-	Payload   string    `gorm:"column:payload"` // JSON blob
+	Payload   string    `gorm:"column:payload;type:text"` // JSON blob
 	UpdatedAt time.Time `gorm:"column:updated_at"`
 	UpdatedBy string    `gorm:"column:updated_by"`
 }
 
 func (liveSettingsRow) TableName() string { return "sentinel_live_settings" }
 
-// Migrate runs database schema migrations.
+// Migrate runs database schema migrations. Replicas starting at the same
+// time all run it, and a shared database answers whichever lost the race
+// with an error ("table already exists" on MySQL) — which would otherwise
+// take down a starting replica. AutoMigrate is idempotent, so one retry
+// after the winner has finished is enough.
 func (s *Store) Migrate(ctx context.Context) error {
+	err := s.autoMigrate(ctx)
+	if err == nil {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return err
+	case <-time.After(migrateRetryDelay):
+	}
+	return s.autoMigrate(ctx)
+}
+
+// migrateRetryDelay is how long Migrate waits before its one retry.
+var migrateRetryDelay = 500 * time.Millisecond
+
+func (s *Store) autoMigrate(ctx context.Context) error {
 	return s.db.WithContext(ctx).AutoMigrate(
 		&threatEventRow{},
 		&threatActorRow{},

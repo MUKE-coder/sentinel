@@ -36,6 +36,7 @@ import (
 	"github.com/MUKE-coder/sentinel/v2/storage"
 	"github.com/MUKE-coder/sentinel/v2/storage/auditchain"
 	"github.com/MUKE-coder/sentinel/v2/storage/memory"
+	mysqlstore "github.com/MUKE-coder/sentinel/v2/storage/mysql"
 	"github.com/MUKE-coder/sentinel/v2/storage/postgres"
 	"github.com/MUKE-coder/sentinel/v2/storage/sqlite"
 	"github.com/MUKE-coder/sentinel/v2/ui"
@@ -126,10 +127,22 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 		if err != nil {
 			return fmt.Errorf("initialize Postgres storage: %w", err)
 		}
+	case MySQL:
+		store, err = mysqlstore.New(config.Storage.DSN, mysqlstore.Options{
+			MaxOpenConns: config.Storage.MaxOpenConns,
+			MaxIdleConns: config.Storage.MaxIdleConns,
+		})
+		if err != nil {
+			return fmt.Errorf("initialize MySQL storage: %w", err)
+		}
 	case Memory:
 		store = memory.New()
 	default:
-		store = memory.New()
+		// Falling back to in-memory storage here is what hid a misspelled
+		// driver — the dashboard looked healthy and every threat, block, and
+		// audit entry disappeared on restart (issue #30).
+		return fmt.Errorf("sentinel: unknown Storage.Driver %q (use %q, %q, %q, or %q)",
+			config.Storage.Driver, SQLite, Postgres, MySQL, Memory)
 	}
 
 	// 2. Run migrations

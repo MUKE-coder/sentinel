@@ -54,13 +54,24 @@ func (p *Provenance) warn(format string, args ...any) {
 	p.Warnings = append(p.Warnings, fmt.Sprintf(format, args...))
 }
 
+// durableDriver reports whether a storage driver keeps data across a
+// restart, which decides whether a compliance report can be trusted to cover
+// its whole window.
+func durableDriver(driver string) bool {
+	switch driver {
+	case string(sentinel.SQLite), string(sentinel.Postgres), string(sentinel.MySQL):
+		return true
+	}
+	return false
+}
+
 // provenance describes the data behind a report whose window starts at
 // windowStart and spans window.
 func (g *Generator) provenance(ctx context.Context, windowStart time.Time, window time.Duration) Provenance {
 	src := g.source
 	p := Provenance{
 		StorageDriver:      src.StorageDriver,
-		Durable:            src.StorageDriver == string(sentinel.SQLite) || src.StorageDriver == string(sentinel.Postgres),
+		Durable:            durableDriver(src.StorageDriver),
 		RetentionDays:      src.RetentionDays,
 		AuditRetentionDays: src.AuditRetentionDays,
 		OldestThreatEvent:  g.oldestThreat(ctx),

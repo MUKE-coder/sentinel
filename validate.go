@@ -95,16 +95,17 @@ func ValidateConfig(config Config) []ConfigIssue {
 
 	// --- Storage ---
 	switch config.Storage.Driver {
-	case SQLite, Postgres:
+	case SQLite, Postgres, MySQL:
+		if config.Storage.Driver != SQLite && config.Storage.DSN == "" {
+			report(IssueError, "Storage.DSN",
+				"is empty for the %s driver — Mount cannot connect", config.Storage.Driver)
+		}
 	case Memory:
 		report(IssueWarning, "Storage.Driver",
 			"in-memory storage loses every threat, block, and audit entry on restart — compliance reports cover only the time since the last start and are refused in release mode")
-	case MySQL:
-		report(IssueError, "Storage.Driver",
-			"the MySQL driver is not implemented — Mount silently falls back to in-memory storage and all security data is lost on restart; use sqlite or postgres")
 	default:
 		report(IssueError, "Storage.Driver",
-			"unknown driver %q — Mount silently falls back to in-memory storage and all security data is lost on restart", config.Storage.Driver)
+			"unknown driver %q — Mount refuses to start rather than fall back to in-memory storage", config.Storage.Driver)
 	}
 
 	if config.Storage.RetentionDays < 0 {
