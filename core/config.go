@@ -48,6 +48,24 @@ type CAPTCHAConfig struct {
 	SelfHostedSecret string
 }
 
+// configured reports whether any provider secret is set, which is what
+// decides whether AuthShield's CAPTCHA tier can do anything.
+func (c CAPTCHAConfig) configured() bool {
+	return c.HCaptchaSecret != "" || c.TurnstileSecret != "" ||
+		c.RecaptchaSecret != "" || c.SelfHostedSecret != ""
+}
+
+// Providers counts the configured CAPTCHA provider secrets.
+func (c CAPTCHAConfig) Providers() int {
+	n := 0
+	for _, secret := range []string{c.HCaptchaSecret, c.TurnstileSecret, c.RecaptchaSecret, c.SelfHostedSecret} {
+		if secret != "" {
+			n++
+		}
+	}
+	return n
+}
+
 // DashboardConfig configures the embedded security dashboard.
 type DashboardConfig struct {
 	Enabled   *bool
@@ -212,7 +230,80 @@ type AuthShieldConfig struct {
 	// the CAPTCHA token from. Header "X-Captcha-Token" is always also
 	// accepted. Default: "captcha_token".
 	CAPTCHATokenField string
+
+	// LockoutKey decides what MaxFailedAttempts locks: the (client address,
+	// account) pair (LockoutPair, the default), the client address alone
+	// (LockoutIP, the behavior before v2.7.0), or the account wherever the
+	// attempts come from (LockoutAccount). Failures are counted per address
+	// and per account whichever it is, so credential-stuffing detection and
+	// the CAPTCHA tier are unaffected.
+	LockoutKey AuthShieldLockoutKey
+
+	// ExemptIPs are addresses and CIDRs that are never locked by address —
+	// shared egress such as an office NAT, CGNAT, or a VPN gateway, where
+	// one person's five mistakes would bar everybody behind it. Failures
+	// from them are still counted, the CAPTCHA tier still applies, and pair
+	// and account lockouts still apply.
+	ExemptIPs []string
+
+	// UsernameFields are the request fields AuthShield reads the account
+	// name from, in order, so a lockout can be keyed on the account before
+	// the login handler runs. JSON bodies and form posts are both read.
+	// Default: "username", "email", "login", "user".
+	UsernameFields []string
+
+	// AddressFailureBudget is how many failed sign-ins one client address
+	// may accumulate within LockoutDuration before every attempt from it is
+	// refused for AddressCooldown. This is what catches one machine working
+	// through many accounts, which no per-account lockout sees: with the
+	// default pair lockout each account fails only a few times.
+	//
+	// Default: MaxFailedAttempts * 4. Negative disables the throttle.
+	AddressFailureBudget int
+
+	// AddressCooldown is how long an address is refused once it passes
+	// AddressFailureBudget. It is deliberately short: an address is not a
+	// person, and a long ban behind NAT or CGNAT bars everyone sharing it.
+	// An attacker's throughput still collapses. Default: 1 minute.
+	AddressCooldown time.Duration
 }
+
+// AuthShieldLockoutKey decides what an AuthShield lockout bars.
+type AuthShieldLockoutKey string
+
+const (
+	// LockoutPair locks the (client address, account) combination. One
+	// person failing five times stops their own attempts from that address
+	// and leaves everybody else sharing it alone. The default since v2.7.0.
+	LockoutPair AuthShieldLockoutKey = "pair"
+
+	// LockoutIP locks the client address, which is what AuthShield did
+	// before v2.7.0. Behind NAT or CGNAT an address is not a person: five
+	// failures by one user bar everybody sharing that egress address, and
+	// anyone who knows a target's egress address can do it on purpose.
+	// Pair with ExemptIPs if you choose this.
+	LockoutIP AuthShieldLockoutKey = "ip"
+
+	// LockoutAccount locks the account wherever the attempts come from. It
+	// stops a distributed attack on one account, and lets anyone who knows
+	// an account name keep its owner locked out, so it suits internal
+	// applications more than public sign-in.
+	LockoutAccount AuthShieldLockoutKey = "account"
+)
+
+// ValidAuthShieldLockoutKey reports whether k is a lockout key AuthShield
+// understands. Anything else is treated as LockoutPair.
+func ValidAuthShieldLockoutKey(k AuthShieldLockoutKey) bool {
+	switch k {
+	case LockoutPair, LockoutIP, LockoutAccount:
+		return true
+	}
+	return false
+}
+
+// DefaultUsernameFields are the request fields AuthShield reads an account
+// name from when UsernameFields is unset.
+var DefaultUsernameFields = []string{"username", "email", "login", "user"}
 
 // HeaderConfig configures security header injection.
 type HeaderConfig struct {
@@ -442,11 +533,27 @@ func (c *Config) ApplyDefaults() {
 	if c.AuthShield.LockoutDuration == 0 {
 		c.AuthShield.LockoutDuration = 15 * time.Minute
 	}
-	if c.AuthShield.CAPTCHAThreshold == 0 && c.AuthShield.MaxFailedAttempts >= 4 {
+	// The CAPTCHA tier only exists when a provider can answer it. Giving
+	// CAPTCHAThreshold a value regardless meant every deployment that
+	// enabled AuthShield without CAPTCHA had a tier between "allow" and
+	// "locked out" that could never fire, and read like a defence (#35).
+	if c.AuthShield.CAPTCHAThreshold == 0 && c.AuthShield.MaxFailedAttempts >= 4 && c.CAPTCHA.configured() {
 		c.AuthShield.CAPTCHAThreshold = c.AuthShield.MaxFailedAttempts / 2
 		if c.AuthShield.CAPTCHAThreshold < 2 {
 			c.AuthShield.CAPTCHAThreshold = 2
 		}
+	}
+	if c.AuthShield.LockoutKey == "" {
+		c.AuthShield.LockoutKey = LockoutPair
+	}
+	if len(c.AuthShield.UsernameFields) == 0 {
+		c.AuthShield.UsernameFields = DefaultUsernameFields
+	}
+	if c.AuthShield.AddressFailureBudget == 0 {
+		c.AuthShield.AddressFailureBudget = c.AuthShield.MaxFailedAttempts * 4
+	}
+	if c.AuthShield.AddressCooldown == 0 {
+		c.AuthShield.AddressCooldown = time.Minute
 	}
 	if c.AuthShield.CAPTCHATokenField == "" {
 		c.AuthShield.CAPTCHATokenField = "captcha_token"

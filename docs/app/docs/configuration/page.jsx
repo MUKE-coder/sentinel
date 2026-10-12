@@ -518,7 +518,7 @@ Storage: sentinel.StorageConfig{
             <td><code>ExcludeIPs</code></td>
             <td><code>[]string</code></td>
             <td><code>nil</code></td>
-            <td>IP addresses or CIDR ranges to exclude from WAF inspection.</td>
+            <td>IP addresses or CIDR ranges to exclude from WAF inspection. CIDR entries are honoured from v2.7.0; before that every entry was compared as an exact string, so a range matched nothing. <code>ValidateConfig</code> rejects an entry that is neither.</td>
           </tr>
           <tr>
             <td><code>AllowedRedirectHosts</code></td>
@@ -974,7 +974,37 @@ Storage: sentinel.StorageConfig{
             <td><code>LockoutDuration</code></td>
             <td><code>time.Duration</code></td>
             <td><code>15 * time.Minute</code></td>
-            <td>How long an IP is locked out after exceeding <code>MaxFailedAttempts</code>.</td>
+            <td>How long a lockout lasts, and the window failures are counted in.</td>
+          </tr>
+          <tr>
+            <td><code>LockoutKey</code></td>
+            <td><code>LockoutKey</code></td>
+            <td><code>LockoutPair</code></td>
+            <td>What a lockout bars: the (address, account) pair (<code>LockoutPair</code>), the address for everyone behind it (<code>LockoutIP</code>, the behaviour up to v2.6.0), or the account from anywhere (<code>LockoutAccount</code>). See <a href="/docs/auth-shield#what-a-lockout-bars">What a lockout bars</a>. (v2.7.0+)</td>
+          </tr>
+          <tr>
+            <td><code>ExemptIPs</code></td>
+            <td><code>[]string</code></td>
+            <td><code>nil</code></td>
+            <td>Addresses and CIDRs that are never locked by address — office NAT, CGNAT, a VPN gateway. Failures are still counted, and the throttle, the CAPTCHA tier, and pair or account lockouts still apply. (v2.7.0+)</td>
+          </tr>
+          <tr>
+            <td><code>AddressFailureBudget</code></td>
+            <td><code>int</code></td>
+            <td><code>MaxFailedAttempts * 4</code></td>
+            <td>Failures one address may accumulate within <code>LockoutDuration</code> before every attempt from it is refused for <code>AddressCooldown</code>. This catches one machine working through many accounts. Negative disables it. (v2.7.0+)</td>
+          </tr>
+          <tr>
+            <td><code>AddressCooldown</code></td>
+            <td><code>time.Duration</code></td>
+            <td><code>1 * time.Minute</code></td>
+            <td>How long an address is refused once it passes its failure budget. Short on purpose: an address may be thousands of people. (v2.7.0+)</td>
+          </tr>
+          <tr>
+            <td><code>UsernameFields</code></td>
+            <td><code>[]string</code></td>
+            <td><code>username, email, login, user</code></td>
+            <td>Request fields the account name is read from, so a lockout can be keyed on the account before your handler runs. JSON and form bodies are both read, and the body is restored. (v2.7.0+)</td>
           </tr>
           <tr>
             <td><code>CredentialStuffingDetection</code></td>

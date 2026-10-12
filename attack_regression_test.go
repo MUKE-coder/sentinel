@@ -112,14 +112,22 @@ func TestAttack_SpoofedClientIPDoesNotResetRateLimit(t *testing.T) {
 }
 
 // Credential stuffing: one address, a different username each time, fresh
-// forwarding headers each time. AuthShield must lock the address out — and
-// keep it out even when the next guess is a real account's password.
+// forwarding headers each time.
+//
+// Since v2.7.0 a lockout bars the (address, account) pair rather than the
+// address, because behind NAT an address is an office or a carrier, not a
+// person (issue #36). So this checks both halves of that policy: the account
+// being guessed is locked however the headers are rotated, the neighbours on
+// that address are not, and an address working through many accounts is
+// throttled by its failure budget.
 func TestAttack_CredentialStuffingLockedOut(t *testing.T) {
 	r := attackRouter(t, Config{AuthShield: AuthShieldConfig{
-		Enabled:           true,
-		LoginRoute:        "/api/login",
-		MaxFailedAttempts: 5,
-		LockoutDuration:   time.Minute,
+		Enabled:              true,
+		LoginRoute:           "/api/login",
+		MaxFailedAttempts:    5,
+		LockoutDuration:      time.Minute,
+		AddressFailureBudget: 12,
+		AddressCooldown:      time.Minute,
 	}})
 	r.POST("/api/login", func(c *gin.Context) {
 		var body struct{ Username, Password string }
@@ -139,13 +147,33 @@ func TestAttack_CredentialStuffingLockedOut(t *testing.T) {
 		spoofHeaders(req, i)
 		return serve(r, req, "192.0.2.70").Code
 	}
+
+	// Guessing one account: five failures lock that account from this
+	// address, and rotating forwarding headers doesn't reset the count.
 	for i := 0; i < 5; i++ {
-		if code := login(i, "user"+strconv.Itoa(i), "guess"); code != http.StatusUnauthorized {
+		if code := login(i, "alice", "guess"); code != http.StatusUnauthorized {
 			t.Fatalf("guess %d: got %d, want 401", i+1, code)
 		}
 	}
 	if code := login(5, "alice", "right-password"); code != http.StatusTooManyRequests {
-		t.Errorf("after 5 failed guesses from one address: got %d, want 429", code)
+		t.Errorf("the guessed account must be locked from this address: got %d, want 429", code)
+	}
+
+	// A different account from the same address is not collateral damage:
+	// this is the office that used to be barred by one person's mistakes.
+	if code := login(6, "bob", "guess"); code != http.StatusUnauthorized {
+		t.Errorf("another account from the same address must still be able to try: got %d, want 401", code)
+	}
+
+	// But an address working through many accounts runs out of budget (12
+	// failures here) and is refused for the cooldown — the attack a
+	// per-account lockout cannot see.
+	for i := 0; i < 12; i++ {
+		login(i, "user"+strconv.Itoa(i), "guess")
+	}
+	code := login(99, "carol", "guess")
+	if code != http.StatusTooManyRequests {
+		t.Errorf("an address past its failure budget must be refused: got %d, want 429", code)
 	}
 }
 

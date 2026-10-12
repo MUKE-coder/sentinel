@@ -15,6 +15,70 @@ All notable changes to Sentinel are documented here.
   schema and feature set are identical. The DSN is a go-sql-driver DSN and
   must include `parseTime=True`.
 
+### Added
+
+- **`AuthShield.LockoutKey`: a lockout no longer bars everyone sharing an
+  address.** A lockout was keyed on the client address, and behind NAT or
+  CGNAT an address is an office, a university, an apartment block or a
+  mobile carrier: five mistakes by one person barred everybody sharing that
+  egress address for fifteen minutes, and anyone who knew a target's egress
+  address could do it on purpose by failing sign-ins against any username
+  ([#36](https://github.com/MUKE-coder/sentinel/issues/36)). The default is
+  now `LockoutPair` — the (address, account) combination. `LockoutIP` keeps
+  the old behaviour and `LockoutAccount` bars an account everywhere.
+  Failures are still counted per address and per account whichever key is
+  chosen, so credential-stuffing detection, the CAPTCHA tier and the
+  dashboard are unaffected.
+- **`AuthShield.ExemptIPs`**: addresses and CIDRs that are never locked by
+  address — known shared egress. They are still counted, still throttled,
+  and still subject to pair and account lockouts.
+- **`AuthShield.AddressFailureBudget` and `AddressCooldown`**: one machine
+  working through many accounts is the attack a per-account lockout cannot
+  see, so an address that accumulates `MaxFailedAttempts * 4` failures in
+  the window has every attempt refused for a minute. It is deliberately
+  short, because an address may be thousands of people, and an attacker's
+  throughput still collapses.
+- **`AuthShield.UsernameFields`**: the account name is read from the request
+  (`username`, `email`, `login`, `user` by default, JSON or form) so a
+  lockout can be keyed on the account before the login handler runs. The
+  body is restored for the handler.
+- When no account name can be found (nothing in `UsernameFields` and no
+  `sentinel_username` from the handler) a pair lockout has nothing to key
+  on, so the address is locked — what every application got before v2.7.0,
+  rather than no lockout at all. `ExemptIPs` still applies.
+- A refused sign-in now carries a `Retry-After` header.
+- `AuthShieldStatus` (and the dashboard's AuthShield panel) lists the
+  accounts locked from each address. Without it the panel showed nobody
+  locked while sign-ins were being refused.
+
+### 🔥 Fix
+
+- **A CAPTCHA tier that could never fire.** `ApplyDefaults` set
+  `CAPTCHAThreshold` whether or not a CAPTCHA provider existed, and
+  `ValidateConfig` only complained about *more than one* provider — so the
+  default state of every deployment that enabled AuthShield without CAPTCHA
+  was a tier between "allow" and "locked out" that did nothing and said
+  nothing ([#35](https://github.com/MUKE-coder/sentinel/issues/35)). The
+  threshold now defaults to 0 unless a provider is configured, and
+  `ValidateConfig` warns when a threshold is set without one.
+- **`WAF.ExcludeIPs` honours CIDR ranges.** It has been documented as "IP
+  addresses or CIDR ranges" since v2.0, but entries were compared as exact
+  strings: a `10.0.0.0/8` entry exempted exactly one client, the one whose
+  address was the literal string. `ValidateConfig` now rejects an entry that
+  is neither an address nor a range.
+- `ValidateConfig` also reports an unknown `LockoutKey`, an `ExemptIPs`
+  entry that cannot match a client, an address budget below
+  `MaxFailedAttempts`, and a cooldown longer than the lockout.
+
+### Behavior changes
+
+- **An AuthShield lockout bars the (address, account) pair by default**, not
+  the address. Set `AuthShield.LockoutKey: sentinel.LockoutIP` for the old
+  behaviour, ideally with `ExemptIPs` for your shared egress ranges.
+- **`AuthShield.CAPTCHAThreshold` defaults to 0 without a CAPTCHA provider**,
+  so the dashboard no longer shows a CAPTCHA tier that cannot fire. Set a
+  provider secret to bring the tier back.
+
 ### 🔥 Fix
 
 - **An unrecognised `Storage.Driver` is now a startup error.** `Mount` fell

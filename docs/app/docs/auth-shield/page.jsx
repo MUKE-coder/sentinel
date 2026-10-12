@@ -29,7 +29,7 @@ export default function AuthShield() {
           },
           {
             q: 'How does Auth Shield lockout work?',
-            a: 'Auth Shield tracks failed login attempts (non-2xx responses) per IP within a sliding time window. When failures reach MaxFailedAttempts (default 5), the IP is locked out for LockoutDuration (default 15 minutes). Locked IPs receive HTTP 429 responses.',
+            a: 'Auth Shield tracks failed login attempts (non-2xx responses) per address and per account within a sliding window. When failures reach MaxFailedAttempts (default 5), a lockout applies for LockoutDuration (default 15 minutes) to whatever LockoutKey names — by default the (address, account) pair, so one person\u2019s mistakes do not bar everybody sharing their egress address. Barred attempts get HTTP 429 with Retry-After.',
           },
           {
             q: 'How do I configure the failed attempt threshold?',
@@ -101,7 +101,7 @@ export default function AuthShield() {
             <td><code>MaxFailedAttempts</code></td>
             <td><code>int</code></td>
             <td><code>5</code></td>
-            <td>Number of failed login attempts within the lockout window before the IP is locked out.</td>
+            <td>Failed attempts within the lockout window before a lockout applies to the configured <code>LockoutKey</code>.</td>
           </tr>
           <tr>
             <td><code>LockoutDuration</code></td>
@@ -136,13 +136,16 @@ export default function AuthShield() {
       </p>
       <ol>
         <li>
-          <strong>Pre-check</strong> — Before your login handler runs, Auth Shield checks if the
-          client IP is currently locked out. If it is, the request is immediately rejected with
-          a <code>429 Too Many Requests</code> response.
+          <strong>Pre-check</strong> — Before your login handler runs, Auth Shield reads the
+          account name from the request (the fields in <code>UsernameFields</code>:
+          <code>username</code>, <code>email</code>, <code>login</code>, <code>user</code>) and
+          checks whether this attempt is barred. The body is put back, so your handler still reads
+          it. A barred attempt gets <code>429 Too Many Requests</code> with a
+          <code>Retry-After</code> header.
         </li>
         <li>
-          <strong>Passthrough</strong> — If the IP is not locked, the request proceeds to your
-          login handler as normal.
+          <strong>Passthrough</strong> — If nothing bars the attempt, the request proceeds to
+          your login handler as normal.
         </li>
         <li>
           <strong>Observe response</strong> — After your handler responds, Auth Shield inspects
@@ -153,11 +156,97 @@ export default function AuthShield() {
           </ul>
         </li>
         <li>
-          <strong>Lockout</strong> — If the number of failures from an IP within the{' '}
-          <code>LockoutDuration</code> window reaches <code>MaxFailedAttempts</code>, the IP is
-          locked out for the full <code>LockoutDuration</code>.
+          <strong>Lockout</strong> — When failures within the <code>LockoutDuration</code> window
+          reach <code>MaxFailedAttempts</code>, the lockout applies for the full
+          <code>LockoutDuration</code> to whatever <code>LockoutKey</code> names — by default the
+          (address, account) pair.
+        </li>
+        <li>
+          <strong>Address throttle</strong> — Separately, once one address accumulates
+          <code>AddressFailureBudget</code> failures (default <code>MaxFailedAttempts × 4</code>),
+          every attempt from it is refused for <code>AddressCooldown</code> (default one minute).
+          This catches one machine working through many accounts, which no per-account lockout can
+          see.
         </li>
       </ol>
+
+      <h3 id="what-a-lockout-bars">What a lockout bars</h3>
+      <p>
+        Up to v2.6.0 a lockout barred the <strong>client address</strong>. Behind NAT an address is
+        not a person: it is an office, a university, an apartment block, or a mobile carrier behind
+        CGNAT. Five mistakes by one person barred everybody sharing that egress address for fifteen
+        minutes, and anyone who knew a target&apos;s egress address could do it deliberately by
+        failing sign-ins against any username.
+      </p>
+      <p>Since v2.7.0 the default is <code>LockoutKey: sentinel.LockoutPair</code>:</p>
+      <div className="overflow-x-auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>A lockout bars</th>
+              <th>Use it when</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>LockoutPair</code> (default)</td>
+              <td>That account, from that address</td>
+              <td>Public sign-in. One person&apos;s mistakes never reach their neighbours.</td>
+            </tr>
+            <tr>
+              <td><code>LockoutIP</code></td>
+              <td>The address, for everyone behind it</td>
+              <td>
+                You know each address is a single client, such as a server-to-server API. Pair it
+                with <code>ExemptIPs</code> for any shared egress you know of.
+              </td>
+            </tr>
+            <tr>
+              <td><code>LockoutAccount</code></td>
+              <td>That account, from anywhere</td>
+              <td>
+                Internal applications. It stops a distributed attack on one account, but anyone who
+                knows an account name can keep its owner locked out.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Failures are counted per address <em>and</em> per account whichever key you choose, so
+        credential-stuffing detection, the CAPTCHA tier, and the dashboard are unaffected.
+        <code>ExemptIPs</code> (addresses or CIDRs) are never locked by address; the throttle and
+        the CAPTCHA tier still apply to them.
+      </p>
+      <Callout type="warning" title="If your login reports no account name">
+        <p>
+          A pair lockout needs an account to key on. AuthShield looks in the
+          <code>UsernameFields</code> of the request and at
+          <code>c.Set(&quot;sentinel_username&quot;, …)</code> from your handler. When neither
+          yields one — credentials in a header, or a field name of your own — there is no pair,
+          so the <strong>address</strong> is locked instead. That is what every application got
+          before v2.7.0, and it is better than no lockout at all.
+        </p>
+        <p>
+          To get account-scoped lockouts, add your field name to
+          <code>UsernameFields</code> or set <code>sentinel_username</code> in your login handler.
+          <code>ExemptIPs</code> still spares an address from being locked either way.
+        </p>
+      </Callout>
+      <Callout type="info" title="The CAPTCHA tier needs a provider">
+        <p>
+          The tier between allowing and locking out only exists when a CAPTCHA provider is
+          configured. Up to v2.6.0 <code>CAPTCHAThreshold</code> was given a value regardless, so a
+          deployment without a provider had a tier that read like a defence and could never fire.
+        </p>
+        <p>
+          It now defaults to 0 unless one of <code>CAPTCHA.HCaptchaSecret</code>,
+          <code>TurnstileSecret</code>, <code>RecaptchaSecret</code>, or
+          <code>SelfHostedSecret</code> is set, and <code>ValidateConfig</code> warns when a
+          threshold is set without a provider.
+        </p>
+      </Callout>
 
       <Callout type="warning" title="LoginRoute Must Match Exactly">
         The <code>LoginRoute</code> must be the exact path string of your login handler (e.g.,{' '}
@@ -361,7 +450,7 @@ for i in $(seq 1 5); do
 done
 
 # Attempt 1-5: HTTP 401 (failed login, counter incrementing)
-# After 5 failures, the IP is now locked out.`}
+# After 5 failures this account is locked out from this address.`}
       />
 
       <h3>Verify the Lockout</h3>

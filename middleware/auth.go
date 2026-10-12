@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ type AuthShield struct {
 	now             func() time.Time
 	errLog          rateLimitedLog
 	captchaProvider captcha.Provider
+	exemptIPs       *IPMatcher
 }
 
 // Counter keys. A failure is recorded as a unique attempt ID in a set, so
@@ -39,10 +41,23 @@ type AuthShield struct {
 const (
 	authFailIPPrefix   = "as:fail:ip:"
 	authFailUserPrefix = "as:fail:user:"
+	authFailPairPrefix = "as:fail:pair:"
 	authLockIPPrefix   = "as:lock:ip:"
 	authLockUserPrefix = "as:lock:user:"
+	authLockPairPrefix = "as:lock:pair:"
+	authCooldownPrefix = "as:cool:ip:"
 	authStuffingPrefix = "as:stuff:"
 )
+
+// pairKey identifies one account's attempts from one address. The account is
+// normalised so "Admin" and "admin" share a lockout.
+func pairKey(ip, account string) string { return ip + "|" + normalizeAccount(account) }
+
+// normalizeAccount folds an account name for use as a counter key. The value
+// stored in the audit log is the one the application reported, untouched.
+func normalizeAccount(account string) string {
+	return clipField(strings.ToLower(strings.TrimSpace(account)), 128)
+}
 
 // NewAuthShield creates a new authentication shield middleware.
 func NewAuthShield(config sentinel.AuthShieldConfig, store storage.Store, pipe *pipeline.Pipeline) *AuthShield {
@@ -54,6 +69,7 @@ func NewAuthShield(config sentinel.AuthShieldConfig, store storage.Store, pipe *
 		counters:    mem,
 		ownCounters: mem,
 		now:         time.Now,
+		exemptIPs:   NewIPMatcher(config.ExemptIPs),
 	}
 }
 
@@ -120,9 +136,20 @@ func (as *AuthShield) Middleware() gin.HandlerFunc {
 
 		clientIP := extractClientIP(c)
 
-		// Check if IP is locked out
-		if as.isIPLocked(clientIP) {
-			as.emitThreat(clientIP, "", "BruteForce", "IP locked out due to too many failed attempts")
+		// The account is read from the request so a lockout can be keyed on
+		// it before the login handler runs. The handler's own
+		// c.Set("sentinel_username") is authoritative afterwards.
+		account := as.extractAccount(c)
+
+		// Check whatever the configured key locks. By default that is the
+		// (address, account) pair: locking the address alone barred everyone
+		// sharing it, which behind NAT or CGNAT is an office, a campus, or a
+		// mobile carrier (#36).
+		if locked, detail := as.locked(clientIP, account); locked {
+			as.emitThreat(clientIP, account, "BruteForce", detail)
+			if retry := as.retryAfter(clientIP, account); retry > 0 {
+				c.Header("Retry-After", strconv.Itoa(retry))
+			}
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": "Too many failed login attempts. Please try again later.",
 				"code":  "AUTH_SHIELD_LOCKED",
@@ -143,7 +170,7 @@ func (as *AuthShield) Middleware() gin.HandlerFunc {
 				return
 			}
 			if err := as.captchaProvider.Verify(c.Request.Context(), token, clientIP); err != nil {
-				as.recordFailure(clientIP, c.GetString("sentinel_username"))
+				as.recordFailure(clientIP, account)
 				as.emitThreat(clientIP, "", "BruteForce", "CAPTCHA verification failed")
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 					"error":            "CAPTCHA verification failed",
@@ -163,6 +190,11 @@ func (as *AuthShield) Middleware() gin.HandlerFunc {
 		// After handler runs, observe the response
 		statusCode := rw.statusCode
 		username := c.GetString("sentinel_username")
+		if username == "" {
+			// The application didn't report one, so use what the request
+			// carried: without an account there is no pair to lock.
+			username = account
+		}
 
 		if statusCode >= 200 && statusCode < 300 {
 			// Successful login — reset IP failures
@@ -228,19 +260,129 @@ func (as *AuthShield) failures(key string, now time.Time) int {
 	return n
 }
 
-// isIPLocked checks if the IP is currently locked out.
+// isIPLocked reports whether the address itself is locked. Only
+// LockoutIP sets that lock.
 func (as *AuthShield) isIPLocked(ip string) bool {
 	return !as.lockedUntil(authLockIPPrefix+ip, as.now()).IsZero()
 }
 
+// lockoutKey is the configured key, defaulting to the pair. An unrecognised
+// value behaves as the pair rather than as the address, so a typo cannot
+// turn on collective lockouts; ValidateConfig reports it.
+func (as *AuthShield) lockoutKey() sentinel.AuthShieldLockoutKey {
+	if sentinel.ValidAuthShieldLockoutKey(as.config.LockoutKey) {
+		return as.config.LockoutKey
+	}
+	return sentinel.LockoutPair
+}
+
+// locked reports whether this attempt is barred, and why, for the audit
+// trail and the threat event.
+func (as *AuthShield) locked(ip, account string) (bool, string) {
+	now := as.now()
+
+	// The address throttle runs under every lockout key: it is what catches
+	// one machine working through many accounts, which a per-account
+	// lockout never sees. It is short on purpose — an address may be
+	// thousands of people.
+	if until := as.lockedUntil(authCooldownPrefix+ip, now); !until.IsZero() {
+		return true, "too many failed sign-ins from this address in a short time"
+	}
+
+	// The address lock is set either by LockoutKey "ip" or by the
+	// unknown-account fallback below, so it applies whatever the key is.
+	if !as.lockedUntil(authLockIPPrefix+ip, now).IsZero() {
+		return true, "address locked out after too many failed sign-ins"
+	}
+
+	switch as.lockoutKey() {
+	case sentinel.LockoutIP:
+		// Already checked above.
+	case sentinel.LockoutAccount:
+		if account != "" && !as.lockedUntil(authLockUserPrefix+normalizeAccount(account), now).IsZero() {
+			return true, "account locked out after too many failed sign-ins"
+		}
+	default: // pair
+		if account != "" && !as.lockedUntil(authLockPairPrefix+pairKey(ip, account), now).IsZero() {
+			return true, "this account is locked out from this address after too many failed sign-ins"
+		}
+	}
+	return false, ""
+}
+
+// lockAddressFallback locks the address when no account could be
+// determined. A pair or account lockout has nothing to key on then, and
+// doing nothing would leave an application whose login handler reports no
+// username with no lockout at all — so the address is what is left, which is
+// what AuthShield did for every application before v2.7.0. Set
+// UsernameFields, or call c.Set("sentinel_username") in the login handler,
+// to get account-scoped lockouts. An exempt address is never locked.
+func (as *AuthShield) lockAddressFallback(ip string, addressFailures int, lock func(string)) {
+	if addressFailures >= as.config.MaxFailedAttempts && !as.exemptIPs.Matches(ip) {
+		lock(authLockIPPrefix + ip)
+	}
+}
+
+// retryAfter is how many seconds until the refusal that applies to this
+// attempt lifts, for the Retry-After header. 0 when it cannot be worked out.
+func (as *AuthShield) retryAfter(ip, account string) int {
+	now := as.now()
+	keys := []string{authCooldownPrefix + ip, authLockIPPrefix + ip}
+	if account != "" {
+		keys = append(keys,
+			authLockPairPrefix+pairKey(ip, account),
+			authLockUserPrefix+normalizeAccount(account))
+	}
+	var soonest time.Time
+	for _, key := range keys {
+		until := as.lockedUntil(key, now)
+		if until.IsZero() {
+			continue
+		}
+		if soonest.IsZero() || until.Before(soonest) {
+			soonest = until
+		}
+	}
+	if soonest.IsZero() {
+		return 0
+	}
+	if seconds := int(soonest.Sub(now).Seconds()) + 1; seconds > 0 {
+		return seconds
+	}
+	return 0
+}
+
+// extractAccount reads the account name from the request, trying each of
+// UsernameFields in turn as a form value and then as a JSON field. The body
+// is restored, so the login handler still reads it.
+func (as *AuthShield) extractAccount(c *gin.Context) string {
+	fields := as.config.UsernameFields
+	if len(fields) == 0 {
+		fields = sentinel.DefaultUsernameFields
+	}
+	for _, field := range fields {
+		if v := c.PostForm(field); v != "" {
+			return clipField(v, 128)
+		}
+	}
+	payload := peekJSONBody(c)
+	for _, field := range fields {
+		if v, ok := payload[field].(string); ok && v != "" {
+			return clipField(v, 128)
+		}
+	}
+	return ""
+}
+
 // IsUserLocked checks if a specific username is locked.
 func (as *AuthShield) IsUserLocked(username string) bool {
-	return !as.lockedUntil(authLockUserPrefix+username, as.now()).IsZero()
+	return !as.lockedUntil(authLockUserPrefix+normalizeAccount(username), as.now()).IsZero()
 }
 
 // UnblockUser removes the lockout on a specific username.
 func (as *AuthShield) UnblockUser(username string) {
-	if _, err := as.counters.Delete(context.Background(), authFailUserPrefix+username, authLockUserPrefix+username); err != nil {
+	account := normalizeAccount(username)
+	if _, err := as.counters.Delete(context.Background(), authFailUserPrefix+account, authLockUserPrefix+account); err != nil {
 		as.errLog.log("AuthShield counter store: %v", err)
 	}
 }
@@ -252,23 +394,61 @@ func (as *AuthShield) recordFailure(ip, username string) {
 	window := as.config.LockoutDuration
 	attempt := uuid.NewString()
 
-	// fail counts the attempt against key and sets the lockout at lockKey
-	// once MaxFailedAttempts land within the window.
-	fail := func(key, lockKey string) {
+	count := func(key string) int {
 		n, err := as.counters.Record(ctx, key, attempt, window, now)
 		if err != nil {
 			as.errLog.log("AuthShield counter store: %v (failed logins not counted until it recovers)", err)
-			return
+			return 0
 		}
-		if n >= as.config.MaxFailedAttempts {
-			if err := as.counters.SetUntil(ctx, lockKey, now.Add(window)); err != nil {
-				as.errLog.log("AuthShield counter store: %v", err)
-			}
+		return n
+	}
+	lockFor := func(key string, d time.Duration) {
+		if err := as.counters.SetUntil(ctx, key, now.Add(d)); err != nil {
+			as.errLog.log("AuthShield counter store: %v", err)
 		}
 	}
-	fail(authFailIPPrefix+ip, authLockIPPrefix+ip)
-	if username != "" {
-		fail(authFailUserPrefix+username, authLockUserPrefix+username)
+	lock := func(key string) { lockFor(key, window) }
+
+	// Count per address and per account whatever the lockout key is: the
+	// CAPTCHA tier and credential-stuffing detection both read the address
+	// counter, and the dashboard shows both numbers.
+	addressFailures := count(authFailIPPrefix + ip)
+	accountFailures := 0
+	account := normalizeAccount(username)
+	if account != "" {
+		accountFailures = count(authFailUserPrefix + account)
+	}
+
+	// One address, many accounts: refuse everything from it for a short
+	// while. The per-account lockout cannot see that attack, and a long ban
+	// would land on everyone behind the address.
+	if budget := as.config.AddressFailureBudget; budget > 0 && addressFailures >= budget && as.config.AddressCooldown > 0 {
+		lockFor(authCooldownPrefix+ip, as.config.AddressCooldown)
+	}
+
+	switch as.lockoutKey() {
+	case sentinel.LockoutIP:
+		// An exempt address is counted and challenged but never locked:
+		// locking shared egress bars everyone behind it.
+		if addressFailures >= as.config.MaxFailedAttempts && !as.exemptIPs.Matches(ip) {
+			lock(authLockIPPrefix + ip)
+		}
+	case sentinel.LockoutAccount:
+		if account == "" {
+			as.lockAddressFallback(ip, addressFailures, lock)
+			break
+		}
+		if accountFailures >= as.config.MaxFailedAttempts {
+			lock(authLockUserPrefix + account)
+		}
+	default: // pair
+		if account == "" {
+			as.lockAddressFallback(ip, addressFailures, lock)
+			break
+		}
+		if n := count(authFailPairPrefix + pairKey(ip, account)); n >= as.config.MaxFailedAttempts {
+			lock(authLockPairPrefix + pairKey(ip, account))
+		}
 	}
 
 	// Credential stuffing: many different usernames from one IP within the
@@ -284,9 +464,11 @@ func (as *AuthShield) recordFailure(ip, username string) {
 
 // recordSuccess resets failure counters on successful login.
 func (as *AuthShield) recordSuccess(ip, username string) {
-	keys := []string{authFailIPPrefix + ip, authLockIPPrefix + ip, authStuffingPrefix + ip}
-	if username != "" {
-		keys = append(keys, authFailUserPrefix+username, authLockUserPrefix+username)
+	keys := []string{authFailIPPrefix + ip, authLockIPPrefix + ip, authCooldownPrefix + ip, authStuffingPrefix + ip}
+	if account := normalizeAccount(username); account != "" {
+		keys = append(keys,
+			authFailUserPrefix+account, authLockUserPrefix+account,
+			authFailPairPrefix+pairKey(ip, account), authLockPairPrefix+pairKey(ip, account))
 	}
 	if _, err := as.counters.Delete(context.Background(), keys...); err != nil {
 		as.errLog.log("AuthShield counter store: %v", err)
@@ -322,11 +504,39 @@ func (as *AuthShield) emitThreat(ip, username, threatType, detail string) {
 // AuthShieldStatus is a snapshot of one IP's current AuthShield state,
 // returned by Snapshot for the dashboard.
 type AuthShieldStatus struct {
-	IP              string    `json:"ip"`
-	FailedAttempts  int       `json:"failed_attempts"`
-	Locked          bool      `json:"locked"`
-	LockUntil       time.Time `json:"lock_until,omitempty"`
-	CAPTCHARequired bool      `json:"captcha_required"`
+	IP             string `json:"ip"`
+	FailedAttempts int    `json:"failed_attempts"`
+
+	// Locked is true when the address itself is barred, which only
+	// LockoutKey "ip" does.
+	Locked    bool      `json:"locked"`
+	LockUntil time.Time `json:"lock_until,omitempty"`
+
+	// LockedAccounts are the accounts barred from this address under the
+	// default pair lockout. Without this the dashboard showed nobody locked
+	// while sign-ins were in fact being refused.
+	LockedAccounts  []string `json:"locked_accounts,omitempty"`
+	CAPTCHARequired bool     `json:"captcha_required"`
+}
+
+// lockedAccountsFor lists the accounts currently barred from one address by
+// a pair lockout.
+func (as *AuthShield) lockedAccountsFor(ctx context.Context, ip string, now time.Time) []string {
+	keys, err := as.counters.Keys(ctx, authLockPairPrefix+ip+"|")
+	if err != nil {
+		return nil
+	}
+	var accounts []string
+	for _, key := range keys {
+		if as.lockedUntil(key, now).IsZero() {
+			continue
+		}
+		if _, account, ok := strings.Cut(strings.TrimPrefix(key, authLockPairPrefix), "|"); ok && account != "" {
+			accounts = append(accounts, account)
+		}
+	}
+	sort.Strings(accounts)
+	return accounts
 }
 
 // Snapshot returns the current per-IP AuthShield state — useful for the
@@ -347,12 +557,20 @@ func (as *AuthShield) Snapshot() []AuthShieldStatus {
 			ips[strings.TrimPrefix(k, prefix)] = true
 		}
 	}
+	// Addresses that only have a pair lockout belong in the list too.
+	if keys, err := as.counters.Keys(ctx, authLockPairPrefix); err == nil {
+		for _, k := range keys {
+			if ip, _, ok := strings.Cut(strings.TrimPrefix(k, authLockPairPrefix), "|"); ok {
+				ips[ip] = true
+			}
+		}
+	}
 
 	out := make([]AuthShieldStatus, 0, len(ips))
 	for ip := range ips {
 		attempts := as.failures(authFailIPPrefix+ip, now)
 		until := as.lockedUntil(authLockIPPrefix+ip, now)
-		if attempts == 0 && until.IsZero() {
+		if attempts == 0 && until.IsZero() && len(as.lockedAccountsFor(ctx, ip, now)) == 0 {
 			continue
 		}
 		row := AuthShieldStatus{
@@ -360,6 +578,7 @@ func (as *AuthShield) Snapshot() []AuthShieldStatus {
 			FailedAttempts: attempts,
 			Locked:         !until.IsZero(),
 			LockUntil:      until,
+			LockedAccounts: as.lockedAccountsFor(ctx, ip, now),
 		}
 		if as.captchaProvider != nil && as.config.CAPTCHAThreshold > 0 && !row.Locked && attempts >= as.config.CAPTCHAThreshold {
 			row.CAPTCHARequired = true
@@ -410,23 +629,31 @@ func extractCAPTCHAToken(c *gin.Context, fieldName string) string {
 	if v := c.PostForm(fieldName); v != "" {
 		return v
 	}
-	if c.Request.Body == nil {
-		return ""
-	}
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 64*1024))
-	if err != nil {
-		return ""
-	}
-	c.Request.Body = io.NopCloser(bytes.NewReader(body))
-	if len(body) == 0 {
-		return ""
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return ""
-	}
-	if v, ok := payload[fieldName].(string); ok {
+	if v, ok := peekJSONBody(c)[fieldName].(string); ok {
 		return v
 	}
 	return ""
+}
+
+// peekJSONBody decodes a JSON request body and puts it back, so a handler
+// downstream still reads it. A body that isn't JSON, or is larger than the
+// cap, decodes to nothing rather than an error: this is only used to find
+// fields AuthShield keys on.
+func peekJSONBody(c *gin.Context) map[string]any {
+	if c.Request.Body == nil {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 64*1024))
+	if err != nil {
+		return nil
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	if len(body) == 0 {
+		return nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+	return payload
 }

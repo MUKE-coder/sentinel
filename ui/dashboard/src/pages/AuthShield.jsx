@@ -44,22 +44,38 @@ export default function AuthShield() {
   }
 
   const entries = snapshot.entries || [];
-  const locked = entries.filter((e) => e.locked).length;
-  const captcha = entries.filter((e) => e.captcha_required && !e.locked).length;
-  const warming = entries.filter((e) => !e.locked && !e.captcha_required).length;
+  // A lockout keyed on the (address, account) pair — the default since
+  // v2.7.0 — bars accounts, not the address, so counting only e.locked
+  // showed nobody locked while sign-ins were being refused.
+  const barred = (e) => e.locked || (e.locked_accounts || []).length > 0;
+  const locked = entries.filter(barred).length;
+  const captcha = entries.filter((e) => e.captcha_required && !barred(e)).length;
+  const warming = entries.filter((e) => !barred(e) && !e.captcha_required).length;
 
   const columns = [
     {
       key: 'state',
       label: 'State',
       render: (_, row) => {
-        if (row.locked) return <span className="px-2 py-0.5 rounded text-xs bg-[#ff2d55]/20 text-[#ff2d55]">Locked</span>;
+        if (row.locked) return <span className="px-2 py-0.5 rounded text-xs bg-[#ff2d55]/20 text-[#ff2d55]">Address locked</span>;
+        if ((row.locked_accounts || []).length > 0)
+          return <span className="px-2 py-0.5 rounded text-xs bg-[#ff2d55]/20 text-[#ff2d55]">Account locked</span>;
         if (row.captcha_required) return <span className="px-2 py-0.5 rounded text-xs bg-[#ff6b35]/20 text-[#ff6b35]">CAPTCHA</span>;
         return <span className="px-2 py-0.5 rounded text-xs bg-[#1e2d4a] text-[#8892a0]">Warming</span>;
       },
     },
     { key: 'ip', label: 'IP', render: (v) => <span className="font-mono">{v}</span> },
     { key: 'failed_attempts', label: 'Failed Attempts', render: (v) => <span className="text-[#e0e0e0] font-bold">{v}</span> },
+    {
+      key: 'locked_accounts',
+      label: 'Locked Accounts',
+      render: (v) =>
+        (v || []).length > 0 ? (
+          <span className="font-mono text-[#ff2d55]">{v.join(', ')}</span>
+        ) : (
+          <span className="text-[#8892a0]">—</span>
+        ),
+    },
     {
       key: 'lock_until',
       label: 'Lock Expires',
@@ -85,8 +101,8 @@ export default function AuthShield() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <StatCard label="Locked IPs" value={locked} color="#ff2d55" />
-        <StatCard label="CAPTCHA Tier" value={captcha} color="#ff6b35" subtitle={snapshot.captcha_provider ? '' : 'No provider configured — IPs jump straight to lockout'} />
+        <StatCard label="Addresses with a lockout" value={locked} color="#ff2d55" subtitle="By default a lockout bars an account, not the address" />
+        <StatCard label="CAPTCHA Tier" value={captcha} color="#ff6b35" subtitle={snapshot.captcha_provider ? '' : 'No provider configured — the tier never fires'} />
         <StatCard label="Warming IPs" value={warming} color="#00d4ff" subtitle="Accumulating failures" />
       </div>
 

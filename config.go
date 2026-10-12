@@ -13,6 +13,7 @@ type (
 	Limit              = core.Limit
 	RateLimitConfig    = core.RateLimitConfig
 	AuthShieldConfig   = core.AuthShieldConfig
+	LockoutKey         = core.AuthShieldLockoutKey
 	HeaderConfig       = core.HeaderConfig
 	AnomalyConfig      = core.AnomalyConfig
 	IPReputationConfig = core.IPReputationConfig
