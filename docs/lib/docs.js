@@ -3,6 +3,7 @@ export const sidebarNav = [
     title: 'Getting Started',
     items: [
       { title: 'Introduction', href: '/docs/getting-started' },
+      { title: "What's New in v2.8", href: '/docs/whats-new-v2-8' },
       { title: "What's New in v2.7", href: '/docs/whats-new-v2-7' },
       { title: "What's New in v2.6", href: '/docs/whats-new-v2-6' },
       { title: "What's New in v2.5", href: '/docs/whats-new-v2-5' },
@@ -55,6 +56,7 @@ export const sidebarNav = [
 
 export const searchIndex = [
   { title: 'Introduction', href: '/docs/getting-started', content: 'Getting started installation quick start mount gin router zero config sentinel SDK security middleware', section: 'Getting Started' },
+  { title: "What's New in v2.8", href: '/docs/whats-new-v2-8', content: "v2.8.0 release notes AutoBlock automatic IP blocking repeat offenders scanner env probe .env sendgrid gemini laravel LFI detection block-offenders bulk ban dry run threat log scanning bots", section: 'Getting Started' },
   { title: "What's New in v2.7", href: '/docs/whats-new-v2-7', content: "v2.7.0 release notes MySQL storage adapter driver error in-memory fallback AuthShield lockout NAT CGNAT shared address LockoutKey pair account ExemptIPs AddressFailureBudget AddressCooldown CAPTCHA tier provider unreachable dashboard login budget replicas migrations race ExcludeIPs CIDR", section: 'Getting Started' },
   { title: "What's New in v2.6", href: '/docs/whats-new-v2-6', content: "v2.6.0 release notes dashboard settings stored persisted across replicas restart SyncInterval settings live reset discard configured AllowedRedirectHosts open redirect callback OAuth allowlist whitelist forgotten restart block propagation Redis round trip dashboard bundle lazy", section: 'Getting Started' },
   { title: "What's New in v2.5", href: '/docs/whats-new-v2-5', content: "v2.5.0 release notes replicas horizontal scaling load balancer shared counters Redis redisstore CounterStore countertest rate limit AuthShield lockout across instances multi-replica Caddy Postgres", section: 'Getting Started' },

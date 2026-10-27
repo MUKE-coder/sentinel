@@ -3,7 +3,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/MUKE-coder/sentinel)](https://goreportcard.com/report/github.com/MUKE-coder/sentinel)
-[![Release](https://img.shields.io/badge/Release-v2.7.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
+[![Release](https://img.shields.io/badge/Release-v2.8.0-00d4ff)](https://github.com/MUKE-coder/sentinel/releases)
 [![Tests](https://img.shields.io/badge/Tests-18%20suites-brightgreen)](https://github.com/MUKE-coder/sentinel)
 [![Benchmarks](https://img.shields.io/badge/Benchmarks-15-orange)](https://github.com/MUKE-coder/sentinel)
 [![Dashboard Pages](https://img.shields.io/badge/Dashboard-15%20pages-purple)](https://github.com/MUKE-coder/sentinel)
@@ -19,6 +19,16 @@ sentinel.Mount(r, nil, sentinel.Config{})
 r.Run(":8080")
 // Dashboard → http://localhost:8080/sentinel/ui
 ```
+
+## What's new in v2.8.0
+
+**Scanners get blocked instead of logged.**
+
+- **`AutoBlock`.** An address that trips detection `Threats` times (default 10) within `Window` (default 10 minutes) is blocked for `Duration` (default 24 hours). This is behaviour rather than reputation: `IPReputation.AutoBlock` waits on what a third party knows about an address, this acts on what the address just did to you. Counting runs through `Config.Counters`, so threats spread across replicas add up to one total. `MinSeverity`, `ExemptIPs` and the whitelist keep it from turning on your own traffic, and every automatic block is audited.
+- **`POST /api/ip/block-offenders`**, and a **Block repeat offenders** panel on the dashboard's IP Management page: block every address over a threshold in one call, with `dry_run` to see the list first. Auto-block only sees threats from when it is switched on — this is for the backlog already in your log.
+- **Every env-file probe is detected.** `/.env` matched but `/sendgrid.env`, `/gemini.env` and `/laravel.env` did not; they stopped matching in v2.4.0, when the pattern was tightened to clear a `report.env.pdf` false positive. Prefixed env files are most of what a scanner asks for. The lookalikes still pass and the corpus false-positive count is unchanged.
+
+**Upgrading:** nothing required, and no defaults changed — `AutoBlock` is off until you turn it on.
 
 ## What's new in v2.7.0
 
