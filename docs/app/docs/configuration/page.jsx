@@ -1763,6 +1763,89 @@ UserExtractor: func(c *gin.Context) *sentinel.UserContext {
       {/*  COUNTERS                                                           */}
       {/* ------------------------------------------------------------------ */}
 
+      <h2 id="auto-block">Auto-Block (Repeat Offenders)</h2>
+      <p>
+        <code>Config.AutoBlock</code> blocks an address that keeps attacking. A scanner walking a
+        list of paths trips detection thousands of times, and without this every one of those
+        requests is inspected, recorded and answered, one at a time, for hours.
+      </p>
+      <p>
+        This is behaviour, not reputation: <code>IPReputation.AutoBlock</code> acts on what a third
+        party already knows about an address, and this acts on what the address has just done to
+        your application. Counting runs through <code>Config.Counters</code>, so threats spread
+        across replicas add up to one total. (v2.8.0+)
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Enabled</code></td>
+            <td><code>bool</code></td>
+            <td><code>false</code></td>
+            <td>Turns automatic blocking on.</td>
+          </tr>
+          <tr>
+            <td><code>Threats</code></td>
+            <td><code>int</code></td>
+            <td><code>10</code></td>
+            <td>Threats from one address within <code>Window</code> before it is blocked. <code>ValidateConfig</code> warns at 1, where a single false positive locks out a real user.</td>
+          </tr>
+          <tr>
+            <td><code>Window</code></td>
+            <td><code>time.Duration</code></td>
+            <td><code>10 * time.Minute</code></td>
+            <td>How long threats are counted over.</td>
+          </tr>
+          <tr>
+            <td><code>Duration</code></td>
+            <td><code>time.Duration</code></td>
+            <td><code>24 * time.Hour</code></td>
+            <td>How long the block lasts. Zero blocks until someone lifts it.</td>
+          </tr>
+          <tr>
+            <td><code>MinSeverity</code></td>
+            <td><code>Severity</code></td>
+            <td><code>High</code></td>
+            <td>The lowest severity that counts. The scanner patterns (LFI, SQLi, path traversal) score High or Critical, so a stream of medium-severity oddities never accumulates into a block.</td>
+          </tr>
+          <tr>
+            <td><code>ExemptIPs</code></td>
+            <td><code>[]string</code></td>
+            <td><code>nil</code></td>
+            <td>Addresses and CIDRs never auto-blocked: your monitoring, an office range, a partner integration. Whitelisted addresses are already exempt.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <CodeBlock
+        language="go"
+        code={`AutoBlock: sentinel.AutoBlockConfig{
+    Enabled:     true,
+    Threats:     10,               // within Window
+    Window:      10 * time.Minute,
+    Duration:    24 * time.Hour,   // 0 blocks until lifted
+    MinSeverity: sentinel.SeverityHigh,
+    ExemptIPs:   []string{"203.0.113.0/24"},
+},`}
+      />
+      <Callout type="info" title="For what is already in your threat log">
+        <p>
+          Auto-block only sees threats from the moment it is turned on. To deal with the addresses
+          already in your log, use the dashboard&apos;s <strong>Block repeat offenders</strong>{' '}
+          panel on the IP Management page, or{' '}
+          <code>POST /api/ip/block-offenders</code>, which blocks everything over a threshold in
+          one call and can list the addresses first with <code>dry_run</code>.
+        </p>
+      </Callout>
+
       <h2 id="counters">Counters (Multiple Replicas)</h2>
       <p>
         <code>Config.Counters</code> holds the counters behind rate limiting, AuthShield, and the

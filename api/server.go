@@ -143,6 +143,8 @@ func (s *Server) RegisterRoutes(r *gin.Engine, prefix string) {
 		protected.GET("/ip/blocked", s.handleListBlockedIPs)
 		protected.POST("/ip/block", s.handleBlockIP)
 		protected.DELETE("/ip/block/:ip", s.handleUnblockIP)
+		// Block every repeat offender at once; dry_run lists them first.
+		protected.POST("/ip/block-offenders", s.handleBlockOffenders)
 
 		// Performance
 		protected.GET("/performance/overview", s.handlePerformanceOverview)

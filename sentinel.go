@@ -264,6 +264,15 @@ func MountE(router *gin.Engine, db *gorm.DB, config Config) error {
 		counters = middleware.NewMemoryCounterStore()
 	}
 
+	// 5d2. Block addresses that keep attacking. A scanner walking a list of
+	// paths trips this in seconds; without it every request it makes is
+	// inspected, recorded and answered, one at a time, for hours.
+	if config.AutoBlock.Enabled {
+		pipe.AddHandler(intelligence.NewAutoBlocker(config.AutoBlock, ipManager, counters, pipe))
+		log.Printf("[sentinel] auto-block on: %d threats of %s or worse within %s blocks an address for %s",
+			config.AutoBlock.Threats, config.AutoBlock.MinSeverity, config.AutoBlock.Window, config.AutoBlock.Duration)
+	}
+
 	// 5e. Initialize auth shield (with optional CAPTCHA tier)
 	var authShield *middleware.AuthShield
 	if config.AuthShield.Enabled {

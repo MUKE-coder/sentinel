@@ -112,6 +112,31 @@ const (
 	DefaultInsecureSecretKey = "sentinel-default-secret-change-me"
 )
 
+// SeverityRank orders severities so they can be compared: Low 1 through
+// Critical 4. A value that is not a severity ranks 0, below all of them.
+func SeverityRank(s Severity) int {
+	switch s {
+	case SeverityLow:
+		return 1
+	case SeverityMedium:
+		return 2
+	case SeverityHigh:
+		return 3
+	case SeverityCritical:
+		return 4
+	}
+	return 0
+}
+
+// AtLeast reports whether s is at least as severe as min. An empty min
+// means everything qualifies.
+func (s Severity) AtLeast(min Severity) bool {
+	if min == "" {
+		return true
+	}
+	return SeverityRank(s) >= SeverityRank(min)
+}
+
 // ThreatType defines the category of a detected threat.
 type ThreatType string
 
