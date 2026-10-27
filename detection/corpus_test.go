@@ -116,10 +116,10 @@ func TestCorpus(t *testing.T) {
 	// WAFConfig.AllowedRedirectHosts (see TestFilterRedirects).
 	type bound struct{ maxFP, minDetected int }
 	bounds := map[string]bound{
-		"low":      {maxFP: 7, minDetected: 41},
-		"medium":   {maxFP: 9, minDetected: 54},
-		"strict":   {maxFP: 9, minDetected: 56},
-		"defaults": {maxFP: 9, minDetected: 56},
+		"low":      {maxFP: 7, minDetected: 46},
+		"medium":   {maxFP: 9, minDetected: 59},
+		"strict":   {maxFP: 9, minDetected: 61},
+		"defaults": {maxFP: 9, minDetected: 61},
 	}
 
 	t.Logf("corpus: %d benign samples, %d attacks", len(benign), len(attacks))

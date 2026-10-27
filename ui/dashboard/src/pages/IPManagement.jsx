@@ -21,6 +21,11 @@ export default function IPManagement() {
   const [newReason, setNewReason] = useState('');
   const [duration, setDuration] = useState('24h');
   const [error, setError] = useState('');
+  // Repeat-offender sweep: preview first, then block what the preview showed.
+  const [sweepThreats, setSweepThreats] = useState(5);
+  const [sweepPreview, setSweepPreview] = useState(null);
+  const [sweepBusy, setSweepBusy] = useState(false);
+  const [sweepResult, setSweepResult] = useState('');
 
   const loadBlocked = useCallback(async () => {
     try {
@@ -51,6 +56,40 @@ export default function IPManagement() {
       loadBlocked();
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  // A scan comes from dozens of addresses; blocking them one at a time is
+  // how a threat log with thousands of rows gets ignored instead of acted
+  // on. The preview always runs first, so nothing is blocked unseen.
+  const runSweep = async (dryRun) => {
+    setSweepBusy(true);
+    setError('');
+    setSweepResult('');
+    try {
+      const res = await apiFetch('/ip/block-offenders', {
+        method: 'POST',
+        body: JSON.stringify({
+          min_threats: Number(sweepThreats) || 5,
+          since: '168h',
+          duration: duration === 'permanent' ? undefined : duration,
+          permanent: duration === 'permanent',
+          reason: `Bulk block: ${sweepThreats}+ threats in the last 7 days`,
+          dry_run: dryRun,
+        }),
+      });
+      const data = res.data || {};
+      if (dryRun) {
+        setSweepPreview(data);
+      } else {
+        setSweepPreview(null);
+        setSweepResult(`Blocked ${data.blocked} of ${data.matched} matching addresses.`);
+        loadBlocked();
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSweepBusy(false);
     }
   };
 
@@ -137,6 +176,65 @@ export default function IPManagement() {
           </p>
         )}
       </form>
+
+      {/* Repeat offenders */}
+      <div className="bg-[#0d1526] border border-[#1e2d4a] rounded-lg p-4">
+        <h3 className="text-sm uppercase tracking-wider text-[#8892a0] mb-1">Block repeat offenders</h3>
+        <p className="text-xs text-[#8892a0] mb-3">
+          Blocks every address seen in the last 7 days with at least this many detected threats,
+          using the duration selected above. Whitelisted and already-blocked addresses are skipped.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-sm text-[#8892a0]">
+            Minimum threats
+            <input
+              type="number"
+              min="1"
+              value={sweepThreats}
+              onChange={(e) => { setSweepThreats(e.target.value); setSweepPreview(null); }}
+              className="ml-2 w-20 bg-[#0a0f1e] border border-[#1e2d4a] rounded px-2 py-1 text-sm text-[#e0e0e0] focus:border-[#00d4ff] focus:outline-none"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={sweepBusy}
+            onClick={() => runSweep(true)}
+            className="px-4 py-2 border border-[#1e2d4a] text-[#e0e0e0] rounded text-sm font-medium hover:border-[#00d4ff] transition-colors disabled:opacity-50"
+          >
+            {sweepBusy ? 'Working…' : 'Preview'}
+          </button>
+          {sweepPreview && sweepPreview.matched > 0 && (
+            <button
+              type="button"
+              disabled={sweepBusy}
+              onClick={() => runSweep(false)}
+              className="px-4 py-2 bg-[#ff2d55] text-white rounded text-sm font-medium hover:bg-[#e0264d] transition-colors disabled:opacity-50"
+            >
+              Block {sweepPreview.matched} address{sweepPreview.matched === 1 ? '' : 'es'}
+            </button>
+          )}
+        </div>
+
+        {sweepPreview && (
+          <div className="mt-3 text-sm">
+            {sweepPreview.matched === 0 ? (
+              <p className="text-[#8892a0]">No address matches those criteria.</p>
+            ) : (
+              <>
+                <p className="text-[#e0e0e0]">
+                  {sweepPreview.matched} address{sweepPreview.matched === 1 ? '' : 'es'} would be blocked
+                  {sweepPreview.truncated ? ' (capped at 1000 — run again afterwards)' : ''}:
+                </p>
+                <p className="mt-1 font-mono text-xs text-[#8892a0] break-all">
+                  {sweepPreview.ips.slice(0, 20).join(', ')}
+                  {sweepPreview.ips.length > 20 ? ` … and ${sweepPreview.ips.length - 20} more` : ''}
+                </p>
+              </>
+            )}
+          </div>
+        )}
+        {sweepResult && <p className="mt-3 text-sm text-[#00d4ff]">{sweepResult}</p>}
+      </div>
 
       {/* Blocked IPs table */}
       <DataTable columns={columns} data={blocked} emptyText="No blocked IPs" />

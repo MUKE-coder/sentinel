@@ -17,6 +17,7 @@ type (
 	HeaderConfig       = core.HeaderConfig
 	AnomalyConfig      = core.AnomalyConfig
 	IPReputationConfig = core.IPReputationConfig
+	AutoBlockConfig    = core.AutoBlockConfig
 	CounterStore       = core.CounterStore
 	CounterUsage       = core.CounterUsage
 	GeoConfig          = core.GeoConfig

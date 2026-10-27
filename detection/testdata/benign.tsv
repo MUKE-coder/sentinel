@@ -90,3 +90,6 @@ header	Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.
 header	curl/8.9.1
 header	Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)
 header	Go-http-client/1.1
+path	/blog/how-we-use-dotenv-in-ci
+path	/environment/settings
+query	q=how to use .env files in docker

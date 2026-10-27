@@ -17,6 +17,7 @@ type Config struct {
 	Headers      HeaderConfig
 	Anomaly      AnomalyConfig
 	IPReputation IPReputationConfig
+	AutoBlock    AutoBlockConfig
 	Geo          GeoConfig
 	Alerts       AlertConfig
 	AI           *AIConfig
@@ -305,6 +306,43 @@ func ValidAuthShieldLockoutKey(k AuthShieldLockoutKey) bool {
 // name from when UsernameFields is unset.
 var DefaultUsernameFields = []string{"username", "email", "login", "user"}
 
+// AutoBlockConfig blocks an address that keeps attacking.
+//
+// This is behaviour, not reputation: IPReputation.AutoBlock acts on what a
+// third party says about an address, and this acts on what the address has
+// just done to this application. Mass scanners walking a list of paths
+// (.env, .git/config, wp-login.php) trip it in seconds, which is the point
+// — otherwise every one of their requests is inspected, recorded, and
+// answered one at a time, for hours.
+//
+// Counting runs through Config.Counters, so the threats an address racks up
+// across every replica count towards one total.
+type AutoBlockConfig struct {
+	Enabled bool
+
+	// Threats is how many threats from one address within Window before it
+	// is blocked. Default: 10.
+	Threats int
+
+	// Window is how long threats are counted over. Default: 10 minutes.
+	Window time.Duration
+
+	// Duration is how long the block lasts. Zero means until someone lifts
+	// it. Default: 24 hours.
+	Duration time.Duration
+
+	// MinSeverity is the lowest severity that counts towards Threats.
+	// Default: High — which is what the scanner patterns (LFI, SQLi, path
+	// traversal) score, while a lone medium-severity oddity does not
+	// accumulate towards a block.
+	MinSeverity Severity
+
+	// ExemptIPs are addresses and CIDRs that are never auto-blocked: your
+	// own monitoring, an office range, a partner's integration. Whitelisted
+	// IPs are already exempt.
+	ExemptIPs []string
+}
+
 // HeaderConfig configures security header injection.
 type HeaderConfig struct {
 	Enabled                 *bool
@@ -554,6 +592,18 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.AuthShield.AddressCooldown == 0 {
 		c.AuthShield.AddressCooldown = time.Minute
+	}
+	if c.AutoBlock.Threats == 0 {
+		c.AutoBlock.Threats = 10
+	}
+	if c.AutoBlock.Window == 0 {
+		c.AutoBlock.Window = 10 * time.Minute
+	}
+	if c.AutoBlock.Duration == 0 {
+		c.AutoBlock.Duration = 24 * time.Hour
+	}
+	if c.AutoBlock.MinSeverity == "" {
+		c.AutoBlock.MinSeverity = SeverityHigh
 	}
 	if c.AuthShield.CAPTCHATokenField == "" {
 		c.AuthShield.CAPTCHATokenField = "captcha_token"

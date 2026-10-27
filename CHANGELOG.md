@@ -2,6 +2,47 @@
 
 All notable changes to Sentinel are documented here.
 
+## [2.8.0] - Unreleased
+
+### Added
+
+- **`AutoBlock`: an address that keeps attacking is blocked.** A scanner
+  walking a list of paths — `.env`, `.git/config`, `wp-login.php` — would
+  trip detection thousands of times and be inspected, recorded, and answered
+  every single time, for hours. Sentinel now counts threats per address and
+  blocks one that passes `AutoBlock.Threats` (default 10) within
+  `AutoBlock.Window` (default 10 minutes) for `AutoBlock.Duration` (default
+  24 hours).
+  - This is behaviour, not reputation: `IPReputation.AutoBlock` acts on what
+    a third party already knows about an address, and this acts on what the
+    address has just done here.
+  - Counting runs through `Config.Counters`, so threats spread across
+    replicas add up to one total, and the block is enforced everywhere.
+  - `MinSeverity` (default High) keeps a stream of low-severity oddities
+    from accumulating into a block, `ExemptIPs` (addresses or CIDRs) and the
+    whitelist are never blocked, and each automatic block is written to the
+    audit log like a manual one.
+- **`POST /api/ip/block-offenders`, and a "Block repeat offenders" panel in
+  the dashboard.** One call blocks every address with at least
+  `min_threats` detections seen within `since`; `dry_run` lists them first
+  and blocks nobody. Whitelisted and already-blocked addresses are skipped,
+  a run is capped at 1,000 addresses, and the sweep is audited once with the
+  addresses as evidence. This is for the backlog an existing threat log
+  already holds — `AutoBlock` only sees threats from the moment it is
+  turned on.
+- `core.SeverityRank` and `Severity.AtLeast`, for comparing severities.
+
+### 🔥 Fix
+
+- **Env-file probes with a prefix were not detected.** `/.env` and
+  `/.env.production` were, but `/sendgrid.env`, `/gemini.env` and
+  `/laravel.env` were not — they stopped matching in v2.4.0, when the LFI
+  pattern was tightened to clear a `report.env.pdf` false positive. All
+  three shapes are detected now, and the lookalikes still pass: a document
+  called `report.env.pdf` is a PDF, `/sendgrid.env` is someone looking for
+  your API keys. The detection corpus carries the probe list seen in one
+  deployment's threat log, and the false-positive count is unchanged.
+
 ## [2.7.0] - 2026-10-12
 
 ### Added

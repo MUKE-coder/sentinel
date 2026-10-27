@@ -278,6 +278,39 @@ func ValidateConfig(config Config) []ConfigIssue {
 		}
 	}
 
+	// --- Auto-block ---
+	if config.AutoBlock.Enabled {
+		if config.AutoBlock.Threats < 0 {
+			report(IssueError, "AutoBlock.Threats",
+				"%d is negative — every threat would block its address immediately", config.AutoBlock.Threats)
+		} else if config.AutoBlock.Threats == 1 {
+			report(IssueWarning, "AutoBlock.Threats",
+				"is 1, so a single detection blocks an address — one false positive locks out a real user; the default is 10")
+		}
+		if config.AutoBlock.Window < 0 {
+			report(IssueError, "AutoBlock.Window",
+				"%s is negative — threats are counted over a window that has already closed, so nothing is ever blocked", config.AutoBlock.Window)
+		}
+		if config.AutoBlock.Duration < 0 {
+			report(IssueError, "AutoBlock.Duration",
+				"%s is negative — blocks expire before they are written", config.AutoBlock.Duration)
+		}
+		if config.AutoBlock.MinSeverity != "" && core.SeverityRank(config.AutoBlock.MinSeverity) == 0 {
+			report(IssueError, "AutoBlock.MinSeverity",
+				"%q is not Low, Medium, High, or Critical — no threat matches it and nothing is auto-blocked", config.AutoBlock.MinSeverity)
+		}
+		for i, entry := range config.AutoBlock.ExemptIPs {
+			if _, _, err := net.ParseCIDR(entry); err != nil && net.ParseIP(entry) == nil {
+				report(IssueError, fmt.Sprintf("AutoBlock.ExemptIPs[%d]", i),
+					"%q is neither an IP address nor a CIDR range — it can never match a client, so the address it was meant to spare can still be blocked", entry)
+			}
+		}
+		if config.Storage.Driver == Memory {
+			report(IssueWarning, "AutoBlock.Enabled",
+				"is on with in-memory storage — auto-blocks are lost on restart, and a scanner that was blocked yesterday starts over")
+		}
+	}
+
 	// --- Anomaly detection ---
 	if config.Anomaly.Enabled && config.UserExtractor == nil {
 		report(IssueError, "Anomaly.Enabled",

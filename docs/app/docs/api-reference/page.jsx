@@ -178,6 +178,7 @@ export default function ApiReference() {
           ['GET', '/api/ip/blocked', 'Every blocked IP and CIDR with reason and expiry.'],
           ['POST', '/api/ip/block', <>Block an IP or CIDR. Body <code>{'{"ip","reason","expiry","permanent"}'}</code>; <code>expiry</code> is RFC 3339, default 24 hours. Audited.</>],
           ['DELETE', '/api/ip/block/:ip', <>Unblock. Write a CIDR with <code>_</code> for <code>/</code> (<code>10.0.0.0_8</code>). Audited.</>],
+          ['POST', '/api/ip/block-offenders', <>Block every repeat offender in one call: <code>{'{"min_threats":5,"since":"168h","duration":"24h","dry_run":true}'}</code>. With <code>dry_run</code> it returns the addresses and blocks nobody. Whitelisted and already-blocked addresses are skipped, a run is capped at 1,000 (<code>truncated</code> says when more remain), and the sweep is audited once with the addresses as evidence. (v2.8.0+)</>],
           ['GET', '/api/ip/:ip/reputation', 'AbuseIPDB lookup (cached 24 hours). Blocks the IP when AutoBlock is on and the score clears MinAbuseScore.'],
           ['GET', '/api/ip/feeds', <>Live reputation checking (<code>enabled</code>, <code>used_today</code>, <code>max_per_day</code>) and each blocklist feed's <code>entries</code>, <code>last_refresh</code>, and <code>error</code>.</>],
         ]}

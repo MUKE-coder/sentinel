@@ -57,3 +57,8 @@ OpenRedirect	query	return=https://evil.example
 PrototypePollution	query	__proto__[isAdmin]=true
 PrototypePollution	body	{"constructor":{"prototype":{"isAdmin":true}}}
 PrototypePollution	query	a[constructor][prototype][admin]=1
+LFI	path	/gemini.env
+LFI	path	/sendgrid.env
+LFI	path	/store/.env
+LFI	path	/.env.production
+LFI	path	/api/.env.bak

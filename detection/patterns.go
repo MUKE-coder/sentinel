@@ -208,8 +208,16 @@ func init() {
 			Name: "LFI",
 			// Dotfiles and web.config count as a whole path segment or value
 			// ("/.env", "file=.env.local", "/.git/config"), not as part of a
-			// longer name ("report.env.pdf", "web.config-explained").
-			Regex:          regexp.MustCompile(`(?i)(etc[/\\]passwd|etc[/\\]shadow|proc[/\\]self|var[/\\]log|windows[/\\]system32|boot\.ini|(?:^|[/\\=])(?:web\.config|\.htaccess|\.htpasswd|\.git|\.env(?:\.[\w-]+)?)(?:$|[/?&#"'\s;,]))`),
+			// longer name ("web.config-explained").
+			//
+			// An env file may also carry a prefix ("/sendgrid.env",
+			// "/gemini.env") or a suffix (".env.production", ".env.bak"),
+			// which is most of what mass scanners ask for. The suffix comes
+			// from a list of the ones that name a variant, so a document
+			// that merely contains ".env" mid-name still passes:
+			// "report.env.pdf" is a PDF, "/sendgrid.env" is someone looking
+			// for your API keys.
+			Regex:          regexp.MustCompile(`(?i)(etc[/\\]passwd|etc[/\\]shadow|proc[/\\]self|var[/\\]log|windows[/\\]system32|boot\.ini|(?:^|[/\\=])(?:web\.config|\.htaccess|\.htpasswd|\.git|[\w.-]*\.env(?:\.(?:prod(?:uction)?|local|dev(?:elopment)?|stag(?:e|ing)|test(?:ing)?|backup|bak|old|orig|save|example|sample|default|template|docker|server|\d+))?)(?:$|[/?&#"'\s;,]))`),
 			ThreatType:     sentinel.ThreatLFI,
 			BaseSeverity:   sentinel.SeverityHigh,
 			BaseConfidence: 80,
