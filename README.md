@@ -301,6 +301,198 @@ sentinel.Mount(r, db, config)
 
 See [examples/](examples/) for complete runnable examples.
 
+## Environment Variables
+
+Sentinel reads **no environment variables of its own** — it is configured through the
+`sentinel.Config` struct you pass to `Mount`. The names below are a convention, not a contract:
+call them what you like. What matters is which values must come from the environment rather than
+from source control, and what happens when one is missing.
+
+### The whole set
+
+```bash
+# ─── Required in production ──────────────────────────────────────────────
+SENTINEL_PASSWORD=                  # dashboard login password
+SENTINEL_SECRET_KEY=                # JWT signing key, 32+ random bytes
+
+# ─── Storage (Driver + DSN) ──────────────────────────────────────────────
+SENTINEL_DB_DRIVER=postgres         # sqlite | postgres | mysql | memory
+DATABASE_URL=                       # DSN for the driver above; empty for sqlite = sentinel.db
+SENTINEL_AUDIT_KEY=                 # HMAC key for the audit hash chain (32+ bytes)
+
+# ─── More than one replica ───────────────────────────────────────────────
+REDIS_URL=                          # shared rate-limit, lockout and login counters
+
+# ─── Optional: dashboard ─────────────────────────────────────────────────
+SENTINEL_USERNAME=admin             # dashboard login name
+
+# ─── Optional: AI analysis ───────────────────────────────────────────────
+SENTINEL_AI_PROVIDER=               # claude | openai | gemini
+SENTINEL_AI_KEY=                    # that provider's API key
+SENTINEL_AI_MODEL=                  # override the provider default
+
+# ─── Optional: threat intelligence ───────────────────────────────────────
+ABUSEIPDB_KEY=                      # live reputation checks on attacking IPs
+
+# ─── Optional: CAPTCHA tier (pick one) ───────────────────────────────────
+SENTINEL_TURNSTILE_SECRET=
+SENTINEL_HCAPTCHA_SECRET=
+SENTINEL_RECAPTCHA_SECRET=
+SENTINEL_SELFHOSTED_CAPTCHA_SECRET=
+
+# ─── Optional: alerting ──────────────────────────────────────────────────
+SENTINEL_SLACK_WEBHOOK=
+SENTINEL_ALERT_WEBHOOK_URL=
+SENTINEL_PAGERDUTY_KEY=
+SENTINEL_SMTP_HOST=
+SENTINEL_SMTP_PORT=587
+SENTINEL_SMTP_USER=
+SENTINEL_SMTP_PASSWORD=
+SENTINEL_ALERT_RECIPIENTS=          # comma-separated
+```
+
+### What each one does
+
+**Required in production.** Both have defaults that are deliberately unusable in a real deployment.
+
+| Variable | Config field | If you leave it unset |
+| --- | --- | --- |
+| `SENTINEL_PASSWORD` | `Dashboard.Password` | Falls back to `sentinel`, which is refused for non-loopback clients and refused outright in release mode. Behind Docker or a proxy you cannot sign in without setting it. |
+| `SENTINEL_SECRET_KEY` | `Dashboard.SecretKey` | A random key is generated per process: everyone is signed out on every restart, and a token issued by one replica is rejected by the others. Use 32+ random bytes. |
+
+**Storage.** Since v2.7.0 a driver Sentinel does not recognise is a startup error rather than a silent fall back to in-memory storage.
+
+| Variable | Config field | Notes |
+| --- | --- | --- |
+| `SENTINEL_DB_DRIVER` | `Storage.Driver` | `sqlite` (default), `postgres`, `mysql`, `memory`. `memory` loses everything on restart and compliance reports are refused in release mode. |
+| `DATABASE_URL` | `Storage.DSN` | Postgres: `postgres://user:pass@host:5432/db?sslmode=require`. MySQL: `user:pass@tcp(host:3306)/db?charset=utf8mb4&parseTime=True` — **`parseTime=True` is required**. SQLite: a file path, defaulting to `sentinel.db`; keep it on a persistent volume. |
+| `SENTINEL_AUDIT_KEY` | `Storage.AuditKey` | Makes the audit log's hash chain an HMAC chain, so someone with database access but not this key cannot rewrite entries undetectably. Keep it stable — entries hashed under a different key fail verification. Without it the chain is plain SHA-256. |
+
+**More than one replica.** Without a shared store each instance counts alone, so a client gets every limit once per replica.
+
+| Variable | Config field | Notes |
+| --- | --- | --- |
+| `REDIS_URL` | `Config.Counters` | `redis://user:pass@host:6379/0`. Backs rate limits, AuthShield lockouts, the dashboard login budget and auto-block counting. Everything fails open if Redis is down. |
+
+**Optional integrations.** Each feature is off until its key is present.
+
+| Variable | Config field | Notes |
+| --- | --- | --- |
+| `SENTINEL_USERNAME` | `Dashboard.Username` | Defaults to `admin`. |
+| `SENTINEL_AI_PROVIDER` / `SENTINEL_AI_KEY` / `SENTINEL_AI_MODEL` | `AI.Provider`, `AI.APIKey`, `AI.Model` | `claude`, `openai` or `gemini`. Prompts are redacted before they leave the process. Leave `AI` nil to keep AI off entirely. |
+| `ABUSEIPDB_KEY` | `IPReputation.AbuseIPDBKey` | Attacking IPs are checked as they arrive, under `MaxChecksPerDay` (900, below the free tier's 1,000). Blocklist feeds work without it. |
+| `SENTINEL_TURNSTILE_SECRET` and friends | `CAPTCHA.*Secret` | Set exactly one. Without a provider, AuthShield's CAPTCHA tier does not exist — `CAPTCHAThreshold` stays 0 and failures go straight towards the lockout. |
+
+**Alerting.** Configure only the channels you want; an incomplete channel is reported by `ValidateConfig` rather than being silently skipped.
+
+| Variable | Config field |
+| --- | --- |
+| `SENTINEL_SLACK_WEBHOOK` | `Alerts.Slack.WebhookURL` |
+| `SENTINEL_ALERT_WEBHOOK_URL` | `Alerts.Webhook.URL` |
+| `SENTINEL_PAGERDUTY_KEY` | `Alerts.PagerDuty.IntegrationKey` (Events API v2 routing key) |
+| `SENTINEL_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `SENTINEL_ALERT_RECIPIENTS` | `Alerts.Email.*` |
+
+### Wiring them up
+
+```go
+package main
+
+import (
+    "log"
+    "os"
+    "strings"
+
+    sentinel "github.com/MUKE-coder/sentinel/v2"
+    "github.com/MUKE-coder/sentinel/v2/redisstore"
+    "github.com/gin-gonic/gin"
+    "github.com/redis/go-redis/v9"
+)
+
+func env(key, fallback string) string {
+    if v := os.Getenv(key); v != "" {
+        return v
+    }
+    return fallback
+}
+
+func sentinelConfig() sentinel.Config {
+    cfg := sentinel.Config{
+        Dashboard: sentinel.DashboardConfig{
+            Username:  env("SENTINEL_USERNAME", "admin"),
+            Password:  os.Getenv("SENTINEL_PASSWORD"),
+            SecretKey: os.Getenv("SENTINEL_SECRET_KEY"),
+        },
+        Storage: sentinel.StorageConfig{
+            Driver:   sentinel.StorageDriver(env("SENTINEL_DB_DRIVER", "sqlite")),
+            DSN:      os.Getenv("DATABASE_URL"),
+            AuditKey: os.Getenv("SENTINEL_AUDIT_KEY"),
+        },
+        WAF:       sentinel.WAFConfig{Enabled: true, Mode: sentinel.ModeBlock},
+        AutoBlock: sentinel.AutoBlockConfig{Enabled: true},
+    }
+
+    // Shared counters, so limits and lockouts hold across replicas.
+    if url := os.Getenv("REDIS_URL"); url != "" {
+        opt, err := redis.ParseURL(url)
+        if err != nil {
+            log.Fatalf("REDIS_URL: %v", err)
+        }
+        cfg.Counters = redisstore.New(redis.NewClient(opt))
+    }
+
+    if key := os.Getenv("SENTINEL_AI_KEY"); key != "" {
+        cfg.AI = &sentinel.AIConfig{
+            Provider: sentinel.AIProvider(env("SENTINEL_AI_PROVIDER", "claude")),
+            APIKey:   key,
+            Model:    os.Getenv("SENTINEL_AI_MODEL"),
+        }
+    }
+    if key := os.Getenv("ABUSEIPDB_KEY"); key != "" {
+        cfg.IPReputation = sentinel.IPReputationConfig{Enabled: true, AbuseIPDBKey: key, AutoBlock: true}
+    }
+    if secret := os.Getenv("SENTINEL_TURNSTILE_SECRET"); secret != "" {
+        cfg.CAPTCHA = sentinel.CAPTCHAConfig{TurnstileSecret: secret}
+    }
+    if hook := os.Getenv("SENTINEL_SLACK_WEBHOOK"); hook != "" {
+        cfg.Alerts = sentinel.AlertConfig{
+            MinSeverity: sentinel.SeverityHigh,
+            Slack:       &sentinel.SlackConfig{WebhookURL: hook},
+        }
+    }
+    if to := os.Getenv("SENTINEL_ALERT_RECIPIENTS"); to != "" {
+        cfg.Alerts.Email = &sentinel.EmailConfig{
+            SMTPHost:   os.Getenv("SENTINEL_SMTP_HOST"),
+            SMTPPort:   587,
+            Username:   os.Getenv("SENTINEL_SMTP_USER"),
+            Password:   os.Getenv("SENTINEL_SMTP_PASSWORD"),
+            Recipients: strings.Split(to, ","),
+        }
+    }
+    return cfg
+}
+
+func main() {
+    cfg := sentinelConfig()
+
+    // Report anything that is set but cannot work — a DSN the driver can't
+    // use, an alert channel missing its host, a CAPTCHA threshold with no
+    // provider behind it. Errors are worth refusing to start over.
+    for _, issue := range sentinel.ValidateConfig(cfg) {
+        log.Printf("sentinel config: %s", issue)
+    }
+
+    r := gin.Default()
+    if err := sentinel.MountE(r, nil, cfg); err != nil {
+        log.Fatal(err)
+    }
+    r.Run(":8080")
+}
+```
+
+> **Keep the file out of the repository.** Add `.env` to `.gitignore`. Scanners ask for it by name —
+> `/.env`, `/.env.production`, `/sendgrid.env` — and Sentinel detects and blocks those requests,
+> but only for the application it is mounted on.
+
 ## GORM Audit Plugin
 
 Track database changes automatically:
